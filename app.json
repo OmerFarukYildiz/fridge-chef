@@ -51,7 +51,8 @@
           "photosPermission": "Tarif oluşturmak için galerinizdeki yemek fotoğraflarına erişmek istiyoruz."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-speech-recognition"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -84,6 +84,17 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* Tarif Geçmişi */}
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'Geçmiş',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'time' : 'time-outline'} focused={focused} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

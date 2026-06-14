@@ -45,6 +45,14 @@ export interface FavoriteRecipe extends Recipe {
 }
 
 /**
+ * Firestore'da history alt koleksiyonunda saklanan tarif geçmişi.
+ */
+export interface HistoryRecipe extends Recipe {
+  id: string;
+  viewedAt: number;
+}
+
+/**
  * Firestore'da shoppingList alt koleksiyonunda saklanan öğe.
  */
 export interface ShoppingItem {

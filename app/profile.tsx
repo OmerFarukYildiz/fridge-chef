@@ -21,8 +21,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
 import { auth } from '../services/firebaseConfig';
 import { signOut } from 'firebase/auth';
-import { updateUserPhoto, updateUserAllergies } from '../services/firestoreService';
+import { updateUserPhoto, updateUserAllergies, updateUserDietaryRestrictions } from '../services/firestoreService';
 import { Colors, Radius, Shadow, Spacing, Typography } from '../constants/Colors';
+
+const DIETARY_OPTIONS = [
+  { id: 'Vegan', label: 'Vegan', icon: '🌱' },
+  { id: 'Vejetaryen', label: 'Vejetaryen', icon: '🥦' },
+  { id: 'Keto', label: 'Keto', icon: '🥩' },
+  { id: 'Glutensiz', label: 'Glutensiz', icon: '🌾' },
+  { id: 'Düşük Karbonhidrat', label: 'Düşük Karbonhidrat', icon: '🥗' },
+  { id: 'Akdeniz Diyeti', label: 'Akdeniz Diyeti', icon: '🫒' },
+];
 
 const ALLERGY_OPTIONS = [
   { id: 'Fıstık', label: 'Fıstık', icon: '🥜' },
@@ -37,6 +46,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, userProfile, refreshProfile } = useAuth();
   
+  const [selectedDiets, setSelectedDiets] = useState<string[]>([]);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -45,7 +55,16 @@ export default function ProfileScreen() {
     if (userProfile?.preferences?.allergies) {
       setSelectedAllergies(userProfile.preferences.allergies);
     }
+    if (userProfile?.preferences?.dietaryRestrictions) {
+      setSelectedDiets(userProfile.preferences.dietaryRestrictions);
+    }
   }, [userProfile]);
+
+  const toggleDiet = (label: string) => {
+    setSelectedDiets((prev) =>
+      prev.includes(label) ? prev.filter((i) => i !== label) : [...prev, label]
+    );
+  };
 
   const toggleAllergy = (label: string) => {
     setSelectedAllergies((prev) =>
@@ -53,15 +72,16 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleSaveAllergies = async () => {
+  const handleSavePreferences = async () => {
     if (!user) return;
     setSaving(true);
     try {
+      await updateUserDietaryRestrictions(user.uid, selectedDiets);
       await updateUserAllergies(user.uid, selectedAllergies);
       await refreshProfile();
-      Alert.alert('Başarılı', 'Alerjileriniz güncellendi.');
+      Alert.alert('Başarılı', 'Tercihleriniz güncellendi.');
     } catch (error) {
-      Alert.alert('Hata', 'Alerjiler güncellenemedi.');
+      Alert.alert('Hata', 'Tercihler güncellenemedi.');
     } finally {
       setSaving(false);
     }
@@ -151,9 +171,34 @@ export default function ProfileScreen() {
         <Text style={styles.emailText}>{userProfile.email}</Text>
       </View>
 
+      {/* Diyet Tercihlerim */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🥗 Diyet Tercihlerim</Text>
+        <Text style={styles.sectionSubtitle}>Seçtiğiniz diyete uygun tarifler önerilecektir.</Text>
+        
+        <View style={styles.chipsGrid}>
+          {DIETARY_OPTIONS.map((option) => {
+            const isSelected = selectedDiets.includes(option.label);
+            return (
+              <TouchableOpacity
+                key={option.id}
+                style={[styles.chip, isSelected && styles.chipSelected]}
+                onPress={() => toggleDiet(option.label)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.chipIcon}>{option.icon}</Text>
+                <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
       {/* Alerjiler */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Alerjilerim</Text>
+        <Text style={styles.sectionTitle}>⚠️ Alerjilerim</Text>
         <Text style={styles.sectionSubtitle}>Seçilen alerjenler tariflerde kullanılmaz.</Text>
         
         <View style={styles.chipsGrid}>
@@ -174,10 +219,13 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+      </View>
 
+      {/* Kaydet Butonu */}
+      <View style={styles.section}>
         <TouchableOpacity 
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          onPress={handleSaveAllergies}
+          onPress={handleSavePreferences}
           disabled={saving}
         >
           {saving ? (
@@ -290,7 +338,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: Spacing.xl,
   },
   chip: {
     flexDirection: 'row',

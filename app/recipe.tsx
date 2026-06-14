@@ -11,20 +11,22 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  Share,
 } from 'react-native';
 import CookingModeSlider from '../components/CookingModeSlider';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getRecipeFromImage } from '../services/geminiService';
-import { addToFavorites, addItemsToShoppingList, addItemsToPantry, getFavorites } from '../services/firestoreService';
+import { addToFavorites, removeFromFavorites, addItemsToShoppingList, addItemsToPantry, getFavorites, addToHistory } from '../services/firestoreService';
 import { NonFoodImageError, Recipe } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Shadow, Spacing, Typography } from '../constants/Colors';
 
 export default function RecipeScreen() {
-  const { base64Image, fromFavorite, recipeJson } = useLocalSearchParams<{
+  const { base64Image, fromFavorite, fromHistory, recipeJson } = useLocalSearchParams<{
     base64Image: string;
     fromFavorite: string;
+    fromHistory: string;
     recipeJson: string;
   }>();
 
@@ -33,6 +35,7 @@ export default function RecipeScreen() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [error, setError] = useState<{ message: string; isNonFood: boolean } | null>(null);
   const [isFavorited, setIsFavorited] = useState(fromFavorite === 'true');
+  const [favoriteDocId, setFavoriteDocId] = useState<string | null>(null);
   const [savingFavorite, setSavingFavorite] = useState(false);
   const [savingShoppingList, setSavingShoppingList] = useState(false);
   const [savingPantry, setSavingPantry] = useState(false);
@@ -41,8 +44,8 @@ export default function RecipeScreen() {
   const router = useRouter();
 
   useEffect(() => {
-    // Favorilerden açıldıysa doğrudan göster
-    if (fromFavorite === 'true' && recipeJson) {
+    // Favorilerden veya geçmişten açıldıysa doğrudan göster
+    if ((fromFavorite === 'true' || fromHistory === 'true') && recipeJson) {
       try {
         setRecipe(JSON.parse(recipeJson));
       } catch {
@@ -66,6 +69,13 @@ export default function RecipeScreen() {
           userProfile?.preferences ?? undefined
         );
         setRecipe(result);
+
+        // Yeni tarif oluşturulduğunda otomatik geçmişe kaydet
+        if (user) {
+          addToHistory(user.uid, result).catch((err) =>
+            console.error('[RecipeScreen] addToHistory err', err)
+          );
+        }
       } catch (err) {
         if (err instanceof NonFoodImageError) {
           setError({
@@ -85,15 +95,21 @@ export default function RecipeScreen() {
     };
 
     fetchRecipe();
-  }, [base64Image, fromFavorite, recipeJson]);
+  }, [base64Image, fromFavorite, fromHistory, recipeJson]);
 
   useEffect(() => {
     const checkFavorite = async () => {
       if (!user || !recipe) return;
       try {
         const favs = await getFavorites(user.uid);
-        const exists = favs.some((f) => f.tarifAdi === recipe.tarifAdi);
-        setIsFavorited(exists);
+        const existing = favs.find((f) => f.tarifAdi === recipe.tarifAdi);
+        if (existing) {
+          setIsFavorited(true);
+          setFavoriteDocId(existing.id);
+        } else {
+          setIsFavorited(false);
+          setFavoriteDocId(null);
+        }
       } catch (err) {
         console.error('[RecipeScreen] checkFavorite err', err);
       }
@@ -101,18 +117,43 @@ export default function RecipeScreen() {
     checkFavorite();
   }, [user, recipe]);
 
-  // ── Favoriye Ekle ──────────────────────────────────────────
-  const handleFavorite = async () => {
-    if (!user || !recipe || isFavorited) return;
+  // ── Favoriye Ekle / Çıkar (Toggle) ─────────────────────────
+  const handleFavoriteToggle = async () => {
+    if (!user || !recipe || savingFavorite) return;
     setSavingFavorite(true);
     try {
-      await addToFavorites(user.uid, recipe);
-      setIsFavorited(true);
-      Alert.alert('❤️ Favorilere Eklendi', `"${recipe.tarifAdi}" favorilerinize kaydedildi.`);
+      if (isFavorited && favoriteDocId) {
+        // Favoriden çıkar
+        await removeFromFavorites(user.uid, favoriteDocId);
+        setIsFavorited(false);
+        setFavoriteDocId(null);
+        Alert.alert('💔 Favoriden Çıkarıldı', `"${recipe.tarifAdi}" favorilerinizden kaldırıldı.`);
+      } else {
+        // Favoriye ekle
+        const docId = await addToFavorites(user.uid, recipe);
+        setIsFavorited(true);
+        setFavoriteDocId(docId);
+        Alert.alert('❤️ Favorilere Eklendi', `"${recipe.tarifAdi}" favorilerinize kaydedildi.`);
+      }
     } catch {
-      Alert.alert('Hata', 'Favori kaydedilemedi. Lütfen tekrar deneyin.');
+      Alert.alert('Hata', 'İşlem gerçekleştirilemedi. Lütfen tekrar deneyin.');
     } finally {
       setSavingFavorite(false);
+    }
+  };
+
+  // ── Tarif Paylaş ───────────────────────────────────────────
+  const handleShare = async () => {
+    if (!recipe) return;
+    const shareText = `🍽️ ${recipe.tarifAdi}\n⏱️ ${recipe.hazirlikSuresi} | 🔥 ${recipe.kaloriTahmini}\n\n📝 Malzemeler:\n${recipe.kullanilanMalzemeler.map((m) => '• ' + m).join('\n')}\n\n👨‍🍳 Yapılışı:\n${recipe.adimAdimYapilisi.map((s, i) => (i + 1) + '. ' + s).join('\n')}${recipe.ipuclari ? '\n\n💡 İpucu: ' + recipe.ipuclari : ''}\n\n— Fridge Chef 🧑‍🍳 ile oluşturuldu`;
+
+    try {
+      await Share.share({
+        message: shareText,
+        title: recipe.tarifAdi,
+      });
+    } catch (err) {
+      console.error('[RecipeScreen] share err', err);
     }
   };
 
@@ -210,8 +251,13 @@ export default function RecipeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
 
-      {/* Tarif Adı */}
-      <Text style={styles.recipeName}>{recipe.tarifAdi}</Text>
+      {/* Tarif Adı + Paylaş */}
+      <View style={styles.titleRow}>
+        <Text style={styles.recipeName}>{recipe.tarifAdi}</Text>
+        <TouchableOpacity style={styles.shareButton} onPress={handleShare} activeOpacity={0.7}>
+          <Ionicons name="share-outline" size={22} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
 
       {/* Rozetler */}
       <View style={styles.badgesRow}>
@@ -331,18 +377,18 @@ export default function RecipeScreen() {
 
       {/* Alt Butonlar */}
       <View style={styles.actionRow}>
-        {/* Favorile */}
+        {/* Favorile / Favoriden Çıkar */}
         <TouchableOpacity
           style={[
             styles.actionButton,
             styles.favoriteButton,
             isFavorited && styles.favoritedButton,
           ]}
-          onPress={handleFavorite}
-          disabled={isFavorited || savingFavorite}
+          onPress={handleFavoriteToggle}
+          disabled={savingFavorite}
         >
           {savingFavorite ? (
-            <ActivityIndicator size="small" color={Colors.error} />
+            <ActivityIndicator size="small" color={isFavorited ? Colors.white : Colors.error} />
           ) : (
             <Ionicons
               name={isFavorited ? 'heart' : 'heart-outline'}
@@ -351,7 +397,7 @@ export default function RecipeScreen() {
             />
           )}
           <Text style={[styles.actionButtonText, { color: isFavorited ? Colors.white : Colors.error }]}>
-            {isFavorited ? 'Favorilendi' : 'Favorile'}
+            {isFavorited ? 'Favoriden Çıkar' : 'Favorile'}
           </Text>
         </TouchableOpacity>
 
@@ -394,9 +440,28 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl, marginTop: 8, ...Shadow.md,
   },
   primaryButtonText: { color: Colors.white, fontSize: Typography.lg, fontWeight: '700' },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.base,
+    gap: 12,
+  },
   recipeName: {
+    flex: 1,
     fontSize: Typography['3xl'], fontWeight: '800', color: Colors.textPrimary,
-    textAlign: 'center', marginBottom: Spacing.base,
+    textAlign: 'center',
+  },
+  shareButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    ...Shadow.sm,
   },
   badgesRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginBottom: Spacing.xl },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 16, borderRadius: Radius.full },

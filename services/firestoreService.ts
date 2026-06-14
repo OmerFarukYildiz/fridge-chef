@@ -20,12 +20,13 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { FavoriteRecipe, PantryItem, Recipe, ShoppingItem } from '../types';
+import { FavoriteRecipe, HistoryRecipe, PantryItem, Recipe, ShoppingItem } from '../types';
 
 // ── Koleksiyon Referansları ───────────────────────────────────
 const favoritesRef    = (uid: string) => collection(db, 'users', uid, 'favorites');
 const shoppingListRef = (uid: string) => collection(db, 'users', uid, 'shoppingList');
 const pantryRef       = (uid: string) => collection(db, 'users', uid, 'pantry');
+const historyRef      = (uid: string) => collection(db, 'users', uid, 'history');
 
 // ============================================================
 // FAVORİLER
@@ -190,6 +191,71 @@ export const getExpiringSoonItems = async (
 };
 
 // ============================================================
+// TARİF GEÇMİŞİ (HISTORY)
+// ============================================================
+
+/**
+ * Tarifi geçmişe ekler. Aynı tarif adı varsa viewedAt güncellenir.
+ */
+const HISTORY_LIMIT = 20;
+
+export const addToHistory = async (uid: string, recipe: Recipe): Promise<string> => {
+  // Aynı isimde tarif varsa tekrar ekleme, güncelle
+  const existing = await getHistory(uid);
+  const existingDoc = existing.find((h) => h.tarifAdi === recipe.tarifAdi);
+  if (existingDoc) {
+    await updateDoc(doc(db, 'users', uid, 'history', existingDoc.id), {
+      ...recipe,
+      viewedAt: serverTimestamp(),
+    });
+    return existingDoc.id;
+  }
+
+  // 20 tarif sınırını aşıyorsa en eski kaydı sil
+  if (existing.length >= HISTORY_LIMIT) {
+    const oldest = existing[existing.length - 1]; // En eski (son sıradaki)
+    await deleteFromHistory(uid, oldest.id);
+  }
+
+  const docRef = await addDoc(historyRef(uid), {
+    ...recipe,
+    viewedAt: serverTimestamp(),
+  });
+  return docRef.id;
+};
+
+/**
+ * Tüm tarif geçmişini çeker (en yeniden eskiye).
+ */
+export const getHistory = async (uid: string): Promise<HistoryRecipe[]> => {
+  const q = query(historyRef(uid), orderBy('viewedAt', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
+    return {
+      ...data,
+      id: docSnap.id,
+      viewedAt: data.viewedAt instanceof Timestamp ? data.viewedAt.toMillis() : Date.now(),
+    } as HistoryRecipe;
+  });
+};
+
+/**
+ * Tek bir tarifi geçmişten siler.
+ */
+export const deleteFromHistory = async (uid: string, recipeId: string): Promise<void> => {
+  await deleteDoc(doc(db, 'users', uid, 'history', recipeId));
+};
+
+/**
+ * Tüm tarif geçmişini temizler.
+ */
+export const clearHistory = async (uid: string): Promise<void> => {
+  const items = await getHistory(uid);
+  await Promise.all(items.map((i) => deleteFromHistory(uid, i.id)));
+};
+
+// ============================================================
 // KULLANICI PROFİLİ
 // ============================================================
 
@@ -199,4 +265,8 @@ export const updateUserPhoto = async (uid: string, base64: string | null): Promi
 
 export const updateUserAllergies = async (uid: string, allergies: string[]): Promise<void> => {
   await updateDoc(doc(db, 'users', uid), { 'preferences.allergies': allergies });
+};
+
+export const updateUserDietaryRestrictions = async (uid: string, restrictions: string[]): Promise<void> => {
+  await updateDoc(doc(db, 'users', uid), { 'preferences.dietaryRestrictions': restrictions });
 };

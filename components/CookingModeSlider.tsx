@@ -8,9 +8,11 @@
 //  • Ekran uyanık kalır (expo-keep-awake)
 //  • Adım numarası, ilerleme çubuğu, önceki/sonraki butonları
 //  • Koyu, immersive arka plan — parlak ekranda net görünür
+//  • 🎤 Sesli Komut: "geç/sonraki/ileri" → sonraki adım,
+//    "geri/önceki" → önceki adım
 // ============================================================
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,6 +29,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent,
+} from 'expo-speech-recognition';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -43,7 +49,13 @@ const COOKING_COLORS = {
   progressFill: '#FF8C00',
   navButton: 'rgba(255,255,255,0.1)',
   navButtonBorder: 'rgba(255,255,255,0.2)',
+  micActive: '#4CAF50',
+  micInactive: 'rgba(255,255,255,0.3)',
 };
+
+// ── Sesli komut anahtar kelimeleri ───────────────────────────
+const NEXT_KEYWORDS = ['geç', 'gec', 'sonraki', 'ileri', 'next', 'devam'];
+const PREV_KEYWORDS = ['geri', 'önceki', 'onceki', 'previous', 'back'];
 
 // ── Tipler ───────────────────────────────────────────────────
 interface CookingModeSliderProps {
@@ -166,6 +178,96 @@ export default function CookingModeSlider({
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // ── Sesli Komut State ──────────────────────────────────────
+  const [isListening, setIsListening] = useState(false);
+  const [lastCommand, setLastCommand] = useState<string | null>(null);
+
+  // currentIndex'i ref ile tut (event handler'lar stale closure sorununu önlemek için)
+  const currentIndexRef = useRef(0);
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  // ── Sesli Tanıma Event'leri ────────────────────────────────
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results?.[0]?.transcript?.toLowerCase().trim();
+    if (!transcript) return;
+
+    // Anahtar kelimeleri kontrol et
+    const words = transcript.split(/\s+/);
+    const lastWord = words[words.length - 1];
+
+    if (NEXT_KEYWORDS.some((kw) => lastWord.includes(kw) || transcript.includes(kw))) {
+      setLastCommand('▶ Sonraki');
+      const idx = currentIndexRef.current;
+      if (idx < steps.length - 1) {
+        flatListRef.current?.scrollToIndex({ index: idx + 1, animated: true });
+      }
+    } else if (PREV_KEYWORDS.some((kw) => lastWord.includes(kw) || transcript.includes(kw))) {
+      setLastCommand('◀ Önceki');
+      const idx = currentIndexRef.current;
+      if (idx > 0) {
+        flatListRef.current?.scrollToIndex({ index: idx - 1, animated: true });
+      }
+    }
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    // Dinleme modundaysa otomatik yeniden başlat
+    if (isListening) {
+      startListeningInternal();
+    }
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    console.warn('[VoiceCommand] error:', event.error);
+    // Bazı hatalar sonrası yeniden başlat
+    if (isListening && event.error !== 'no-speech') {
+      setTimeout(() => {
+        startListeningInternal();
+      }, 1000);
+    }
+  });
+
+  const startListeningInternal = async () => {
+    try {
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) {
+        setIsListening(false);
+        return;
+      }
+      ExpoSpeechRecognitionModule.start({
+        lang: 'tr-TR',
+        interimResults: true,
+        continuous: false,
+      });
+    } catch (err) {
+      console.warn('[VoiceCommand] start error:', err);
+    }
+  };
+
+  const toggleListening = async () => {
+    if (isListening) {
+      // Durdur
+      ExpoSpeechRecognitionModule.stop();
+      setIsListening(false);
+      setLastCommand(null);
+    } else {
+      // Başlat
+      setIsListening(true);
+      await startListeningInternal();
+    }
+  };
+
+  // Modal kapanırken dinlemeyi durdur
+  useEffect(() => {
+    if (!visible && isListening) {
+      ExpoSpeechRecognitionModule.stop();
+      setIsListening(false);
+      setLastCommand(null);
+    }
+  }, [visible]);
+
   // Görünür öğe değiştiğinde index'i güncelle
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -227,6 +329,16 @@ export default function CookingModeSlider({
           </View>
         </View>
 
+        {/* ── Sesli Komut Durumu ───────────────────────────────── */}
+        {isListening && (
+          <View style={styles.voiceBadge}>
+            <View style={styles.voiceDot} />
+            <Text style={styles.voiceBadgeText}>
+              🎤 Sesli Komut Aktif {lastCommand ? `— ${lastCommand}` : '— "geç" veya "geri" deyin'}
+            </Text>
+          </View>
+        )}
+
         {/* ── İlerleme Çubuğu ────────────────────────────────── */}
         <View style={styles.progressContainer}>
           <View style={styles.progressBarBg}>
@@ -287,6 +399,19 @@ export default function CookingModeSlider({
             </Text>
           </TouchableOpacity>
 
+          {/* Mikrofon Butonu */}
+          <TouchableOpacity
+            style={[styles.micButton, isListening && styles.micButtonActive]}
+            onPress={toggleListening}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isListening ? 'mic' : 'mic-outline'}
+              size={28}
+              color={isListening ? '#FFFFFF' : COOKING_COLORS.textSecondary}
+            />
+          </TouchableOpacity>
+
           {/* Son adımda: Bitir Butonu */}
           {isLast ? (
             <TouchableOpacity style={styles.finishButton} onPress={onClose}>
@@ -297,7 +422,7 @@ export default function CookingModeSlider({
                 end={{ x: 1, y: 0 }}
               >
                 <Ionicons name="checkmark-circle" size={24} color="white" />
-                <Text style={styles.finishButtonText}>Pişirmeyi Bitir 🎉</Text>
+                <Text style={styles.finishButtonText}>Bitir 🎉</Text>
               </LinearGradient>
             </TouchableOpacity>
           ) : (
@@ -369,6 +494,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COOKING_COLORS.accent,
   },
+  // ── Sesli Komut Badge ──────────────────────────────────────
+  voiceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(76, 175, 80, 0.3)',
+  },
+  voiceDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COOKING_COLORS.micActive,
+  },
+  voiceBadgeText: {
+    fontSize: 13,
+    color: COOKING_COLORS.micActive,
+    fontWeight: '600',
+  },
   // ── İlerleme ────────────────────────────────────────────────
   progressContainer: {
     paddingHorizontal: 20,
@@ -432,6 +583,20 @@ const styles = StyleSheet.create({
   },
   navButtonTextDisabled: {
     color: COOKING_COLORS.textMuted,
+  },
+  micButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COOKING_COLORS.navButton,
+    borderWidth: 1,
+    borderColor: COOKING_COLORS.navButtonBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  micButtonActive: {
+    backgroundColor: COOKING_COLORS.micActive,
+    borderColor: COOKING_COLORS.micActive,
   },
   finishButton: {
     flex: 1,
