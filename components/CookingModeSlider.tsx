@@ -25,14 +25,45 @@ import {
   ViewToken,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useKeepAwake } from 'expo-keep-awake';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  ExpoSpeechRecognitionModule,
-  useSpeechRecognitionEvent,
-} from 'expo-speech-recognition';
+
+// ── Expo Go uyumlu güvenli speech recognition yükleme ────────
+// expo-speech-recognition native bir modül gerektirir ve
+// Expo Go'da çalışmaz. try/catch ile graceful fallback sağlıyoruz.
+type SpeechEvent = 'result' | 'end' | 'error';
+type SpeechEventHandler = (event: any) => void;
+
+let _speechAvailable = false;
+let _SpeechModule: {
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  start: (opts: object) => void;
+  stop: () => void;
+} = {
+  requestPermissionsAsync: async () => ({ granted: false }),
+  start: () => {},
+  stop: () => {},
+};
+let _useSpeechEvent: (event: SpeechEvent, handler: SpeechEventHandler) => void =
+  () => {}; // no-op hook stub (hook kurallarını korur)
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const sre = require('expo-speech-recognition');
+  _SpeechModule = sre.ExpoSpeechRecognitionModule;
+  _useSpeechEvent = sre.useSpeechRecognitionEvent;
+  _speechAvailable = true;
+} catch {
+  _speechAvailable = false;
+}
+
+const ExpoSpeechRecognitionModule = _SpeechModule;
+const useSpeechRecognitionEvent = _useSpeechEvent;
+const SPEECH_AVAILABLE = _speechAvailable;
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -247,6 +278,14 @@ export default function CookingModeSlider({
   };
 
   const toggleListening = async () => {
+    if (!SPEECH_AVAILABLE) {
+      Alert.alert(
+        '🎤 Sesli Komut',
+        'Sesli komut özelliği Expo Go\'da desteklenmez. Bu özelliği kullanmak için development build gereklidir.',
+        [{ text: 'Tamam' }]
+      );
+      return;
+    }
     if (isListening) {
       // Durdur
       ExpoSpeechRecognitionModule.stop();
