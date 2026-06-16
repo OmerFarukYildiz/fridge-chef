@@ -9,9 +9,14 @@ import { useEffect } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { LogBox } from 'react-native';
+
+LogBox.ignoreLogs(['expo-notifications: Android Push notifications']);
 import { View, ActivityIndicator } from 'react-native';
 import { Colors } from '../constants/Colors';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { requestNotificationPermission } from '../services/notificationService';
 
 // ── Auth'a Göre Yönlendiren İç Bileşen ───────────────────────
 function RootNavigator() {
@@ -25,13 +30,14 @@ function RootNavigator() {
     const inAuthGroup = (segments as string[])[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
-      // Oturum açık değil → Login'e yönlendir
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       router.replace('/(auth)/login' as any);
     } else if (user && inAuthGroup) {
-      // Oturum açık ve auth grubundaysa → Ana ekrana yönlendir
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       router.replace('/(tabs)' as any);
+    }
+
+    // Kullanıcı giriş yaptığında bildirim izni iste
+    if (user && !inAuthGroup) {
+      requestNotificationPermission().catch(() => {});
     }
   }, [user, loading, segments]);
 
@@ -89,14 +95,16 @@ function RootNavigator() {
   );
 }
 
-// ── Root Layout ───────────────────────────────────────────────
+// ── Root Layout ──────────────────────────────────────────────────
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <RootNavigator />
-        <StatusBar style="dark" />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </AuthProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }

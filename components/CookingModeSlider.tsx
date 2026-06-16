@@ -103,7 +103,63 @@ interface StepCardProps {
   totalSteps: number;
 }
 
+// ── Adım Metninden Süre Tespit Et ─────────────────────────────
+const extractMinutes = (text: string): number | null => {
+  // "15 dakika", "2 saat", "30 saniye" gibi ifadeleri yakala
+  const dakikaMatch = text.match(/(\d+)\s*dakika/i);
+  const saatMatch = text.match(/(\d+)\s*saat/i);
+  const saniyeMatch = text.match(/(\d+)\s*saniye/i);
+  if (saatMatch) return parseInt(saatMatch[1], 10) * 60;
+  if (dakikaMatch) return parseInt(dakikaMatch[1], 10);
+  if (saniyeMatch) return Math.ceil(parseInt(saniyeMatch[1], 10) / 60) || 1;
+  return null;
+};
+
 function StepCard({ step, stepNumber, totalSteps }: StepCardProps) {
+  const detectedMinutes = extractMinutes(step);
+  const [timerSeconds, setTimerSeconds] = React.useState<number | null>(null);
+  const [timerRunning, setTimerRunning] = React.useState(false);
+  const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Timer temizle: adım değişince
+  React.useEffect(() => {
+    setTimerSeconds(null);
+    setTimerRunning(false);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  }, [stepNumber]);
+
+  React.useEffect(() => {
+    if (timerRunning && timerSeconds !== null) {
+      intervalRef.current = setInterval(() => {
+        setTimerSeconds((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(intervalRef.current!);
+            setTimerRunning(false);
+            Alert.alert('⏰ Süre Doldu!', `Adım ${stepNumber} tamamlandı!`);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [timerRunning]);
+
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const startTimer = () => {
+    if (detectedMinutes) {
+      setTimerSeconds(detectedMinutes * 60);
+      setTimerRunning(true);
+    }
+  };
+
   return (
     <View style={stepStyles.container}>
       {/* Adım Numarası Rozetı */}
@@ -121,7 +177,7 @@ function StepCard({ step, stepNumber, totalSteps }: StepCardProps) {
 
       {/* Adım Metni — Devasa Font */}
       <View style={stepStyles.textContainer}>
-        <ScrollView 
+        <ScrollView
           style={{ width: '100%' }}
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
           showsVerticalScrollIndicator={true}
@@ -129,6 +185,39 @@ function StepCard({ step, stepNumber, totalSteps }: StepCardProps) {
           <Text style={stepStyles.stepText}>{step}</Text>
         </ScrollView>
       </View>
+
+      {/* Timer — sadece süre tespit edildiyse göster */}
+      {detectedMinutes && (
+        <View style={stepStyles.timerContainer}>
+          {timerSeconds !== null ? (
+            <>
+              <Text style={stepStyles.timerDisplay}>
+                {formatTime(timerSeconds)}
+              </Text>
+              <View style={stepStyles.timerButtons}>
+                <TouchableOpacity
+                  style={[stepStyles.timerBtn, timerRunning ? stepStyles.timerBtnPause : stepStyles.timerBtnStart]}
+                  onPress={() => setTimerRunning((r) => !r)}
+                >
+                  <Ionicons name={timerRunning ? 'pause' : 'play'} size={20} color="white" />
+                  <Text style={stepStyles.timerBtnText}>{timerRunning ? 'Durdur' : 'Devam'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={stepStyles.timerBtnReset}
+                  onPress={() => { setTimerSeconds(detectedMinutes * 60); setTimerRunning(false); }}
+                >
+                  <Ionicons name="refresh" size={18} color={COOKING_COLORS.accent} />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <TouchableOpacity style={stepStyles.timerStartBtn} onPress={startTimer}>
+              <Ionicons name="timer-outline" size={24} color="#FFFFFF" />
+              <Text style={stepStyles.timerStartText}>{detectedMinutes} Dakika Sayacı Başlat ⏱️</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Alt İpucu */}
       <Text style={stepStyles.swipeHint}>
@@ -141,9 +230,9 @@ function StepCard({ step, stepNumber, totalSteps }: StepCardProps) {
 const stepStyles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
+    flex: 1,
     paddingHorizontal: 28,
-    paddingVertical: 60,
+    paddingVertical: 20,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 32,
@@ -192,8 +281,47 @@ const stepStyles = StyleSheet.create({
     fontSize: 15,
     color: COOKING_COLORS.textMuted,
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
+  // ── Timer ──────────────────────────────────────────────────
+  timerContainer: {
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(255,140,0,0.12)',
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,140,0,0.3)',
+  },
+  timerDisplay: {
+    fontSize: 52,
+    fontWeight: '800',
+    color: COOKING_COLORS.accent,
+    letterSpacing: 2,
+    fontVariant: ['tabular-nums'],
+  },
+  timerButtons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  timerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 10, paddingHorizontal: 20, borderRadius: 30,
+  },
+  timerBtnStart: { backgroundColor: COOKING_COLORS.accent },
+  timerBtnPause: { backgroundColor: '#6B7280' },
+  timerBtnText: { color: 'white', fontWeight: '700', fontSize: 15 },
+  timerBtnReset: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,140,0,0.15)',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: COOKING_COLORS.accent,
+  },
+  timerStartBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 12, paddingHorizontal: 22,
+    borderRadius: 30, backgroundColor: 'rgba(255,140,0,0.12)',
+    borderWidth: 1.5, borderColor: COOKING_COLORS.accent,
+  },
+  timerStartText: { color: COOKING_COLORS.accent, fontWeight: '700', fontSize: 15 },
 });
 
 // ── Ana Bileşen ───────────────────────────────────────────────
@@ -399,6 +527,7 @@ export default function CookingModeSlider({
 
         {/* ── Adım Kartları (Yatay Kaydırma) ─────────────────── */}
         <FlatList
+          style={{ flex: 1 }}
           ref={flatListRef}
           data={steps}
           keyExtractor={(_, i) => String(i)}
@@ -422,63 +551,68 @@ export default function CookingModeSlider({
         {/* ── Alt Navigasyon Butonları ────────────────────────── */}
         <View style={styles.navRow}>
           {/* Önceki */}
-          <TouchableOpacity
-            style={[styles.navButton, isFirst && styles.navButtonDisabled]}
-            onPress={goToPrev}
-            disabled={isFirst}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={28}
-              color={isFirst ? COOKING_COLORS.textMuted : COOKING_COLORS.textPrimary}
-            />
-            <Text style={[styles.navButtonText, isFirst && styles.navButtonTextDisabled]}>
-              Önceki
-            </Text>
-          </TouchableOpacity>
-
-          {/* Mikrofon Butonu */}
-          <TouchableOpacity
-            style={[styles.micButton, isListening && styles.micButtonActive]}
-            onPress={toggleListening}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isListening ? 'mic' : 'mic-outline'}
-              size={28}
-              color={isListening ? '#FFFFFF' : COOKING_COLORS.textSecondary}
-            />
-          </TouchableOpacity>
-
-          {/* Son adımda: Bitir Butonu */}
-          {isLast ? (
-            <TouchableOpacity style={styles.finishButton} onPress={onClose}>
-              <LinearGradient
-                colors={[COOKING_COLORS.accent, COOKING_COLORS.accentLight]}
-                style={styles.finishButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Ionicons name="checkmark-circle" size={24} color="white" />
-                <Text style={styles.finishButtonText}>Bitir 🎉</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : (
-            /* Sonraki */
+          <View style={{ flex: 1, alignItems: 'flex-start' }}>
             <TouchableOpacity
-              style={styles.navButton}
-              onPress={goToNext}
+              style={[styles.navButton, isFirst && styles.navButtonDisabled]}
+              onPress={goToPrev}
+              disabled={isFirst}
               activeOpacity={0.7}
             >
-              <Text style={styles.navButtonText}>Sonraki</Text>
               <Ionicons
-                name="chevron-forward"
+                name="chevron-back"
+                size={24}
+                color={isFirst ? COOKING_COLORS.textMuted : COOKING_COLORS.textPrimary}
+              />
+              <Text style={[styles.navButtonText, isFirst && styles.navButtonTextDisabled]}>
+                Önceki
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Mikrofon Butonu */}
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <TouchableOpacity
+              style={[styles.micButton, isListening && styles.micButtonActive]}
+              onPress={toggleListening}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isListening ? 'mic' : 'mic-outline'}
                 size={28}
-                color={COOKING_COLORS.textPrimary}
+                color={isListening ? '#FFFFFF' : COOKING_COLORS.textSecondary}
               />
             </TouchableOpacity>
-          )}
+          </View>
+
+          {/* Sonraki veya Bitir Butonu */}
+          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+            {isLast ? (
+              <TouchableOpacity style={styles.finishButton} onPress={onClose}>
+                <LinearGradient
+                  colors={[COOKING_COLORS.accent, COOKING_COLORS.accentLight]}
+                  style={styles.finishButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="white" />
+                  <Text style={styles.finishButtonText}>Bitir</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.navButton}
+                onPress={goToNext}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.navButtonText}>Sonraki</Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={24}
+                  color={COOKING_COLORS.textPrimary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* ── Alt Güvenli Alan ────────────────────────────────── */}
@@ -638,8 +772,6 @@ const styles = StyleSheet.create({
     borderColor: COOKING_COLORS.micActive,
   },
   finishButton: {
-    flex: 1,
-    marginLeft: 12,
     borderRadius: 16,
     overflow: 'hidden',
   },

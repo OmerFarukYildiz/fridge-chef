@@ -4,30 +4,50 @@
 
 import React, { useState, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Alert,
-  RefreshControl,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Alert, RefreshControl, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { getHistory, deleteFromHistory, clearHistory } from '../../services/firestoreService';
 import { HistoryRecipe } from '../../types';
-import { Colors, Radius, Shadow, Spacing, Typography } from '../../constants/Colors';
+import { AppThemeColors, Radius, Shadow, Spacing, Typography } from '../../constants/Colors';
+import { useTheme } from '../../context/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
+
+// ── Filtre Seçenekleri ───────────────────────────────────────────
+const CATEGORY_FILTERS = ['Tümü', 'Kahvaltı', 'Öğle', 'Akşam', 'Atıştırmalık', 'Tatlı', 'Çorba', 'Salata'];
+const DIFFICULTY_FILTERS = ['Tümü', 'Kolay', 'Orta', 'Zor'];
+const TIME_FILTERS = [
+  { label: 'Tümü', max: Infinity },
+  { label: '⚡ <15dk', max: 15 },
+  { label: '🕒 15-30dk', max: 30, min: 15 },
+  { label: '🍳 30dk+', min: 30, max: Infinity },
+];
+const parseMinutes = (t: string) => { const m = t.match(/(\d+)/); return m ? parseInt(m[1], 10) : 999; };
+
+function FilterChip({ label, active, onPress, colors }: { label: string; active: boolean; onPress: () => void, colors: AppThemeColors }) {
+  const { isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
+  return (
+    <TouchableOpacity style={[styles.chip, active && styles.chipActive]} onPress={onPress} activeOpacity={0.75}>
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
 // ── Tarif Kartı Bileşeni ─────────────────────────────────────
 interface HistoryCardProps {
   item: HistoryRecipe;
   onDelete: (id: string, name: string) => void;
   onPress: (item: HistoryRecipe) => void;
+  colors: AppThemeColors;
 }
 
-function HistoryCard({ item, onDelete, onPress }: HistoryCardProps) {
+function HistoryCard({ item, onDelete, onPress, colors }: HistoryCardProps) {
+  const { isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   const viewedDate = new Date(item.viewedAt).toLocaleDateString('tr-TR', {
     day: 'numeric',
     month: 'long',
@@ -55,20 +75,30 @@ function HistoryCard({ item, onDelete, onPress }: HistoryCardProps) {
             onPress={() => onDelete(item.id, item.tarifAdi)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="trash-outline" size={18} color={Colors.error} />
+            <Ionicons name="trash-outline" size={18} color={colors.error} />
           </TouchableOpacity>
         </View>
 
-        {/* Rozetler */}
+        {/* Kategori + Zorluk Badge'leri */}
         <View style={styles.cardBadges}>
           <View style={styles.badge}>
-            <Ionicons name="time-outline" size={13} color={Colors.textMuted} />
+            <Ionicons name="time-outline" size={13} color={colors.textMuted} />
             <Text style={styles.badgeText}>{item.hazirlikSuresi}</Text>
           </View>
           <View style={styles.badge}>
-            <Ionicons name="flame-outline" size={13} color={Colors.textMuted} />
+            <Ionicons name="flame-outline" size={13} color={colors.textMuted} />
             <Text style={styles.badgeText}>{item.kaloriTahmini}</Text>
           </View>
+          {item.zorlukSeviyesi && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>📊 {item.zorlukSeviyesi}</Text>
+            </View>
+          )}
+          {item.kategori && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>🍽️ {item.kategori}</Text>
+            </View>
+          )}
         </View>
 
         {/* Malzeme özeti */}
@@ -85,12 +115,14 @@ function HistoryCard({ item, onDelete, onPress }: HistoryCardProps) {
 }
 
 // ── Boş Durum ────────────────────────────────────────────────
-function EmptyHistory() {
+function EmptyHistory({ colors }: { colors: AppThemeColors }) {
   const router = useRouter();
+  const { isDark } = useTheme();
+  const styles = getStyles(colors, isDark);
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconCircle}>
-        <Ionicons name="time-outline" size={56} color={Colors.primary} />
+        <Ionicons name="time-outline" size={56} color={colors.primary} />
       </View>
       <Text style={styles.emptyTitle}>Henüz tarif geçmişiniz yok</Text>
       <Text style={styles.emptySubtitle}>
@@ -101,7 +133,7 @@ function EmptyHistory() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onPress={() => router.push('/(tabs)' as any)}
       >
-        <Ionicons name="camera-outline" size={18} color={Colors.white} />
+        <Ionicons name="camera-outline" size={18} color={colors.white} />
         <Text style={styles.emptyButtonText}>İlk Tarifinizi Oluşturun</Text>
       </TouchableOpacity>
     </View>
@@ -111,10 +143,16 @@ function EmptyHistory() {
 // ── Ana Ekran ─────────────────────────────────────────────────
 export default function HistoryScreen() {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const router = useRouter();
   const [history, setHistory] = useState<HistoryRecipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Filtre state'leri
+  const [categoryFilter, setCategoryFilter] = useState('Tümü');
+  const [difficultyFilter, setDifficultyFilter] = useState('Tümü');
+  const [timeFilterIdx, setTimeFilterIdx] = useState(0);
 
   // Sekmeye her odaklanıldığında yenile
   useFocusEffect(
@@ -178,17 +216,25 @@ export default function HistoryScreen() {
   const handleCardPress = (item: HistoryRecipe) => {
     router.push({
       pathname: '/recipe',
-      params: {
-        fromHistory: 'true',
-        recipeJson: JSON.stringify(item),
-      },
+      params: { fromHistory: 'true', recipeJson: JSON.stringify(item) },
     });
   };
+
+  // Filtreleme
+  const timeFilter = TIME_FILTERS[timeFilterIdx];
+  const filtered = history.filter((h) => {
+    if (categoryFilter !== 'Tümü' && h.kategori !== categoryFilter) return false;
+    if (difficultyFilter !== 'Tümü' && h.zorlukSeviyesi !== difficultyFilter) return false;
+    const minutes = parseMinutes(h.hazirlikSuresi);
+    if (timeFilter.min !== undefined && minutes < timeFilter.min) return false;
+    if (timeFilter.max !== Infinity && minutes > timeFilter.max) return false;
+    return true;
+  });
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Ionicons name="time" size={40} color={Colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Geçmiş yükleniyor...</Text>
       </View>
     );
@@ -198,7 +244,7 @@ export default function HistoryScreen() {
     <View style={styles.root}>
       {/* Header */}
       <LinearGradient
-        colors={[Colors.gradientStart, Colors.gradientEnd]}
+        colors={['#8B5CF6', '#7C3AED']}
         style={styles.header}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -207,7 +253,7 @@ export default function HistoryScreen() {
           <View>
             <Text style={styles.headerTitle}>📜 Tarif Geçmişi</Text>
             <Text style={styles.headerSubtitle}>
-              {history.length} tarif (maks. 20)
+              {filtered.length} / {history.length} tarif (maks. 20)
             </Text>
           </View>
           {history.length > 0 && (
@@ -219,20 +265,33 @@ export default function HistoryScreen() {
         </View>
       </LinearGradient>
 
+      {/* Filtre Çipleri */}
+      <View style={styles.filtersSection}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {CATEGORY_FILTERS.map((f) => (
+            <FilterChip key={f} label={f} active={categoryFilter === f} onPress={() => setCategoryFilter(f)} colors={colors} />
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {DIFFICULTY_FILTERS.map((f) => (
+            <FilterChip key={f} label={f} active={difficultyFilter === f} onPress={() => setDifficultyFilter(f)} colors={colors} />
+          ))}
+          {TIME_FILTERS.map((f, i) => (
+            <FilterChip key={f.label} label={f.label} active={timeFilterIdx === i} onPress={() => setTimeFilterIdx(i)} colors={colors} />
+          ))}
+        </ScrollView>
+      </View>
+
       <FlatList
-        data={history}
+        data={filtered}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <HistoryCard
-            item={item}
-            onDelete={handleDelete}
-            onPress={handleCardPress}
-          />
+          <HistoryCard item={item} onDelete={handleDelete} onPress={handleCardPress} colors={colors} />
         )}
-        ListEmptyComponent={<EmptyHistory />}
+        ListEmptyComponent={<EmptyHistory colors={colors} />}
         contentContainerStyle={[
           styles.listContent,
-          history.length === 0 && styles.listContentEmpty,
+          filtered.length === 0 && styles.listContentEmpty,
         ]}
         refreshControl={
           <RefreshControl
@@ -241,8 +300,8 @@ export default function HistoryScreen() {
               setRefreshing(true);
               loadHistory();
             }}
-            colors={[Colors.primary]}
-            tintColor={Colors.primary}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -251,48 +310,31 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  // ── Header ─────────────────────────────────────────────────
+const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  // ── Header ─────────────────────────────────────────────
   header: {
-    paddingTop: 60,
-    paddingBottom: 24,
-    paddingHorizontal: Spacing.xl,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingTop: 60, paddingBottom: 20, paddingHorizontal: Spacing.xl,
+    borderBottomLeftRadius: 24, borderBottomRightRadius: 24,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: Typography['2xl'],
-    fontWeight: '800',
-    color: Colors.white,
-  },
-  headerSubtitle: {
-    fontSize: Typography.sm,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 4,
-  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: Typography['2xl'], fontWeight: '800', color: colors.white },
+  headerSubtitle: { fontSize: Typography.sm, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
   clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: Radius.full,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: Radius.full,
   },
-  clearButtonText: {
-    fontSize: Typography.xs,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
+  clearButtonText: { fontSize: Typography.xs, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+  // ── Filtreler ────────────────────────────────────────────
+  filtersSection: { paddingTop: 12, gap: 4 },
+  filterRow: { paddingHorizontal: 12, gap: 8, paddingBottom: 4 },
+  chip: {
+    paddingVertical: 7, paddingHorizontal: 14, borderRadius: Radius.full,
+    borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.surface,
   },
+  chipActive: { borderColor: colors.primary, backgroundColor: '#FFF4E6' },
+  chipText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
+  chipTextActive: { color: colors.primary, fontWeight: '700' },
   // ── Liste ──────────────────────────────────────────────────
   listContent: {
     padding: Spacing.base,
@@ -304,7 +346,7 @@ const styles = StyleSheet.create({
   },
   // ── Kart ───────────────────────────────────────────────────
   card: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Radius.lg,
     flexDirection: 'row',
     overflow: 'hidden',
@@ -312,7 +354,7 @@ const styles = StyleSheet.create({
   },
   cardAccent: {
     width: 5,
-    backgroundColor: Colors.info,
+    backgroundColor: colors.info,
   },
   cardContent: {
     flex: 1,
@@ -329,7 +371,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: Typography.lg,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     lineHeight: 24,
   },
   deleteButton: {
@@ -346,16 +388,16 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     fontSize: Typography.xs,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '500',
   },
   ingredientPreview: {
     fontSize: Typography.sm,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   viewedDate: {
     fontSize: Typography.xs,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     marginTop: 2,
   },
   // ── Yükleniyor ─────────────────────────────────────────────
@@ -363,12 +405,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     gap: 16,
   },
   loadingText: {
     fontSize: Typography.base,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   // ── Boş Durum ──────────────────────────────────────────────
   emptyContainer: {
@@ -389,12 +431,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: Typography.xl,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: Typography.base,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -402,7 +444,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     paddingVertical: 14,
     paddingHorizontal: 28,
     borderRadius: Radius.xl,
@@ -410,7 +452,7 @@ const styles = StyleSheet.create({
     ...Shadow.md,
   },
   emptyButtonText: {
-    color: Colors.white,
+    color: colors.white,
     fontSize: Typography.base,
     fontWeight: '700',
   },

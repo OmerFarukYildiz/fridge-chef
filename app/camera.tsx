@@ -95,9 +95,10 @@ export default function CameraScreen() {
         throw new Error('Görsel base64 formatına çevrilemedi.');
       }
 
-      // ADIM 3: Recipe sayfasına geç
+      // ADIM 3: Tarif seçim ekranına geç (10 seçenek)
       router.push({
-        pathname: '/recipe',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pathname: '/recipe-picker' as any,
         params: { base64Image: manipulated.base64 },
       });
     } catch (error) {

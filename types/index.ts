@@ -11,6 +11,45 @@ export interface UserPreferences {
 }
 
 /**
+ * Mutfak aleti tanımı (Airfryer, Blender vb.)
+ */
+export type KitchenEquipment =
+  | 'Fırın'
+  | 'Airfryer'
+  | 'Blender'
+  | 'Wok'
+  | 'Döküm Tava'
+  | 'Buharlı Pişirici'
+  | 'Izgara'
+  | 'Çok Amaçlı Tencere';
+
+/**
+ * Fitness hedefi
+ */
+export type FitnessGoal = 'Kilo Ver' | 'Kas Kazan' | 'Forma Kal' | null;
+
+/**
+ * Rozet (Achievement / Badge) tanımı
+ */
+export interface Badge {
+  id: string;
+  name: string;
+  emoji: string;
+  description: string;
+  earnedAt?: number; // ms — kazanıldıysa
+}
+
+/**
+ * Artan yemek (Leftover) kaydı
+ */
+export interface LeftoverItem {
+  id: string;
+  name: string;       // "Fırın Makarna"
+  portion: string;    // "Yarım porsiyon", "2 porsiyon"
+  addedAt: number;
+}
+
+/**
  * Firebase Auth + Firestore kullanıcı profili.
  */
 export interface UserProfile {
@@ -20,6 +59,60 @@ export interface UserProfile {
   photoBase64?: string;
   preferences: UserPreferences;
   createdAt: Date;
+  // Faz 4 eklentileri:
+  kitchenEquipment?: KitchenEquipment[];   // Sahip olunan mutfak aletleri
+  fitnessGoal?: FitnessGoal;               // Fitness hedefi
+  childMode?: boolean;                     // Çocuk modu
+  language?: 'tr' | 'en' | 'de';          // Uygulama dili
+  familyId?: string;                       // Aile grubu ID'si
+  badges?: Badge[];                        // Kazanılan rozetler
+  consumedCaloriesToday?: number;          // Günlük tüketilen kalori
+}
+
+/**
+ * Aile grubu yapısı (Davet kodu için de kullanılır)
+ */
+export interface FamilyGroup {
+  id: string;              // Aile ID'si (genellikle kurucunun UID'si)
+  ownerId: string;         // Kurucunun UID'si
+  inviteCode: string;      // Geçici/kısa davet kodu
+  createdAt: number;       // Timestamp
+}
+
+/**
+ * Sosyal akış paylaşımı (Chef's Feed)
+ */
+export interface FeedPost {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  recipe: Recipe;
+  likes: number;
+  likedBy: string[];       // Beğenen kullanıcıların UID'leri
+  createdAt: number;       // Timestamp
+}
+
+/**
+ * Gemini API'den dönen besin değerleri.
+ */
+export interface NutritionInfo {
+  protein: string;        // örn: '~28g'
+  karbonhidrat: string;   // örn: '~45g'
+  yag: string;            // örn: '~12g'
+}
+
+/**
+ * 10 seçenek ekranında gösterilen kısa tarif özeti.
+ */
+export interface RecipeOption {
+  tarifAdi: string;
+  hazirlikSuresi: string;
+  kaloriTahmini: string;
+  zorlukSeviyesi: 'Kolay' | 'Orta' | 'Zor';
+  mutfakTuru: string;       // 'Türk', 'İtalyan', 'Asya' vb.
+  kisaAciklama: string;     // 1-2 cümle
+  kategori: 'Kahvaltı' | 'Öğle' | 'Akşam' | 'Atıştırmalık' | 'Tatlı' | 'Çorba' | 'Salata' | 'Diğer';
 }
 
 /**
@@ -33,6 +126,12 @@ export interface Recipe {
   eksikMalzemeler: string[];
   adimAdimYapilisi: string[];
   ipuclari?: string;
+  // Yeni alanlar:
+  besinDegerleri?: NutritionInfo;
+  kategori?: RecipeOption['kategori'];
+  zorlukSeviyesi?: 'Kolay' | 'Orta' | 'Zor';
+  mutfakTuru?: string;
+  porsiyonSayisi?: number;
 }
 
 /**
@@ -42,6 +141,10 @@ export interface FavoriteRecipe extends Recipe {
   id: string;
   savedAt: number;
   imageBase64?: string;
+  // Puanlama & Not:
+  rating?: number;          // 1–5
+  note?: string;            // kullanıcı notu
+  ratedAt?: number;         // puanlama zamanı (ms)
 }
 
 /**

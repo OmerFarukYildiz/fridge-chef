@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import {
   getShoppingList,
@@ -25,17 +26,19 @@ import {
   addItemsToShoppingList,
 } from '../../services/firestoreService';
 import { ShoppingItem } from '../../types';
-import { Colors, Radius, Shadow, Spacing, Typography } from '../../constants/Colors';
-import { LinearGradient } from 'expo-linear-gradient';
+import { AppThemeColors, Radius, Shadow, Spacing, Typography } from '../../constants/Colors';
+import { useTheme } from '../../context/ThemeContext';
 
 // ── Alışveriş Öğesi Bileşeni ─────────────────────────────────
 interface ShoppingItemProps {
   item: ShoppingItem;
   onToggle: (id: string, checked: boolean) => void;
   onDelete: (id: string) => void;
+  styles: any;
+  colors: AppThemeColors;
 }
 
-function ShoppingItemRow({ item, onToggle, onDelete }: ShoppingItemProps) {
+function ShoppingItemRow({ item, onToggle, onDelete, styles, colors }: ShoppingItemProps) {
   const opacity = new Animated.Value(1);
 
   const handleDelete = () => {
@@ -55,7 +58,7 @@ function ShoppingItemRow({ item, onToggle, onDelete }: ShoppingItemProps) {
         activeOpacity={0.7}
       >
         {item.checked && (
-          <Ionicons name="checkmark" size={14} color={Colors.white} />
+          <Ionicons name="checkmark" size={14} color="#FFF" />
         )}
       </TouchableOpacity>
 
@@ -70,18 +73,18 @@ function ShoppingItemRow({ item, onToggle, onDelete }: ShoppingItemProps) {
         onPress={handleDelete}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name="close-circle" size={20} color={Colors.textMuted} />
+        <Ionicons name="close-circle" size={20} color={colors.textMuted} />
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
 // ── Boş Durum ─────────────────────────────────────────────────
-function EmptyShopping() {
+function EmptyShopping({ styles, colors, isDark }: any) {
   return (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconCircle}>
-        <Ionicons name="cart-outline" size={56} color={Colors.secondary} />
+        <Ionicons name="cart-outline" size={56} color={colors.secondary} />
       </View>
       <Text style={styles.emptyTitle}>Alışveriş listeniz boş</Text>
       <Text style={styles.emptySubtitle}>
@@ -93,7 +96,10 @@ function EmptyShopping() {
 
 // ── Ana Ekran ─────────────────────────────────────────────────
 export default function ShoppingScreen() {
-  const { user } = useAuth();
+  const { user, userProfile } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -104,13 +110,14 @@ export default function ShoppingScreen() {
   useFocusEffect(
     useCallback(() => {
       loadItems();
-    }, [user])
+    }, [user, userProfile?.familyId])
   );
 
   const loadItems = async () => {
     if (!user) return;
     try {
-      const data = await getShoppingList(user.uid);
+      const targetId = userProfile?.familyId || user.uid;
+      const data = await getShoppingList(targetId);
       setItems(data);
     } catch (err) {
       console.error('[Shopping]', err);
@@ -127,14 +134,16 @@ export default function ShoppingScreen() {
     setItems((prev) =>
       prev.map((i) => (i.id === id ? { ...i, checked } : i))
     );
-    await toggleShoppingItem(user.uid, id, checked);
+    const targetId = userProfile?.familyId || user.uid;
+    await toggleShoppingItem(targetId, id, checked);
   };
 
   // ── Tek Sil ───────────────────────────────────────────────
   const handleDelete = async (id: string) => {
     if (!user) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
-    await deleteShoppingItem(user.uid, id);
+    const targetId = userProfile?.familyId || user.uid;
+    await deleteShoppingItem(targetId, id);
   };
 
   // ── Manuel Ürün Ekle ─────────────────────────────────────
@@ -142,7 +151,8 @@ export default function ShoppingScreen() {
     if (!newItemText.trim() || !user) return;
     setAddingItem(true);
     try {
-      await addItemsToShoppingList(user.uid, [newItemText.trim()]);
+      const targetId = userProfile?.familyId || user.uid;
+      await addItemsToShoppingList(targetId, [newItemText.trim()]);
       setNewItemText('');
       await loadItems();
     } finally {
@@ -165,7 +175,8 @@ export default function ShoppingScreen() {
           style: 'destructive',
           onPress: async () => {
             if (!user) return;
-            await clearCheckedItems(user.uid);
+            const targetId = userProfile?.familyId || user.uid;
+            await clearCheckedItems(targetId);
             setItems((prev) => prev.filter((i) => !i.checked));
           },
         },
@@ -181,7 +192,7 @@ export default function ShoppingScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <Ionicons name="cart" size={40} color={Colors.secondary} />
+        <Ionicons name="cart" size={40} color={colors.secondary} />
         <Text style={styles.loadingText}>Liste yükleniyor...</Text>
       </View>
     );
@@ -191,7 +202,7 @@ export default function ShoppingScreen() {
     <View style={styles.root}>
       {/* Header */}
       <LinearGradient
-        colors={[Colors.secondary, Colors.secondaryDark]}
+        colors={[colors.secondary, colors.secondaryDark]}
         style={styles.header}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -209,7 +220,7 @@ export default function ShoppingScreen() {
               style={styles.clearButton}
               onPress={handleClearChecked}
             >
-              <Ionicons name="trash-outline" size={16} color={Colors.white} />
+              <Ionicons name="trash-outline" size={16} color="#FFF" />
               <Text style={styles.clearButtonText}>Temizle</Text>
             </TouchableOpacity>
           )}
@@ -231,11 +242,11 @@ export default function ShoppingScreen() {
       {/* Manuel Ürün Ekle Kutusu */}
       <View style={styles.addItemContainer}>
         <View style={styles.addItemInput}>
-          <Ionicons name="add-circle-outline" size={20} color={Colors.textMuted} />
+          <Ionicons name="add-circle-outline" size={20} color={colors.textMuted} />
           <TextInput
             style={styles.addItemTextInput}
             placeholder="Ürün ekle..."
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={colors.textMuted}
             value={newItemText}
             onChangeText={setNewItemText}
             onSubmitEditing={handleAddItem}
@@ -250,7 +261,7 @@ export default function ShoppingScreen() {
           onPress={handleAddItem}
           disabled={!newItemText.trim() || addingItem}
         >
-          <Ionicons name="add" size={24} color={Colors.white} />
+          <Ionicons name="add" size={24} color="#FFF" />
         </TouchableOpacity>
       </View>
 
@@ -263,9 +274,11 @@ export default function ShoppingScreen() {
             item={item}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            styles={styles}
+            colors={colors}
           />
         )}
-        ListEmptyComponent={<EmptyShopping />}
+        ListEmptyComponent={<EmptyShopping styles={styles} colors={colors} isDark={isDark} />}
         contentContainerStyle={[
           styles.listContent,
           items.length === 0 && styles.listContentEmpty,
@@ -277,8 +290,8 @@ export default function ShoppingScreen() {
               setRefreshing(true);
               loadItems();
             }}
-            colors={[Colors.secondary]}
-            tintColor={Colors.secondary}
+            colors={[colors.secondary]}
+            tintColor={colors.secondary}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -287,10 +300,10 @@ export default function ShoppingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   // ── Header ─────────────────────────────────────────────────
   header: {
@@ -309,7 +322,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: Typography['2xl'],
     fontWeight: '800',
-    color: Colors.white,
+    color: '#FFF',
   },
   headerSubtitle: {
     fontSize: Typography.sm,
@@ -326,7 +339,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   clearButtonText: {
-    color: Colors.white,
+    color: '#FFF',
     fontSize: Typography.sm,
     fontWeight: '600',
   },
@@ -338,7 +351,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFF',
     borderRadius: 3,
   },
   // ── Ürün Ekle ──────────────────────────────────────────────
@@ -353,24 +366,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Radius.md,
     paddingHorizontal: 12,
     height: 48,
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     ...Shadow.sm,
   },
   addItemTextInput: {
     flex: 1,
     fontSize: Typography.base,
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
   },
   addItemButton: {
     width: 48,
     height: 48,
     borderRadius: Radius.md,
-    backgroundColor: Colors.secondary,
+    backgroundColor: colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     ...Shadow.sm,
@@ -393,7 +406,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     padding: Spacing.base,
     borderRadius: Radius.md,
     ...Shadow.sm,
@@ -403,24 +416,24 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
   },
   checkboxChecked: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   itemName: {
     flex: 1,
     fontSize: Typography.base,
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   itemNameChecked: {
     textDecorationLine: 'line-through',
-    color: Colors.textMuted,
+    color: colors.textMuted,
     fontWeight: '400',
   },
   itemDeleteButton: {
@@ -431,12 +444,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     gap: 16,
   },
   loadingText: {
     fontSize: Typography.base,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   // ── Boş Durum ──────────────────────────────────────────────
   emptyContainer: {
@@ -450,19 +463,19 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#F0FFF4',
+    backgroundColor: isDark ? '#113311' : '#F0FFF4',
     justifyContent: 'center',
     alignItems: 'center',
   },
   emptyTitle: {
     fontSize: Typography.xl,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: Typography.base,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },

@@ -2,7 +2,7 @@
 // Fridge Chef — Renk Paleti ve Tasarım Sabitleri
 // ============================================================
 
-export const Colors = {
+export const LightColors = {
   // Ana renkler
   primary: '#FF8C00',       // Sıcak Turuncu
   primaryLight: '#FFB347',  // Açık Turuncu
@@ -42,9 +42,34 @@ export const Colors = {
   // Overlay
   overlay: 'rgba(0, 0, 0, 0.5)',
   overlayLight: 'rgba(0, 0, 0, 0.2)',
-} as const;
+};
 
-export type ColorKey = keyof typeof Colors;
+export const DarkColors: typeof LightColors = {
+  ...LightColors, // Ana renkleri ve durum renklerini koru
+  
+  // Arka planlar - Koyu Tonlar
+  background: '#0F172A',    // Koyu Lacivert/Siyah
+  surface: '#1E293B',       // Kart yüzeyi (slate-800)
+  surfaceElevated: '#334155', // Yükseltilmiş kart
+
+  // Metin
+  textPrimary: '#F8FAFC',   // Beyaz/Açık Gri
+  textSecondary: '#94A3B8', // Orta Gri
+  textMuted: '#64748B',
+
+  // Nötr
+  border: '#334155',
+  divider: '#1E293B',
+  
+  // Gradient - Koyu temada bir tık daha az parlak olabilir ama turuncuyu koruyoruz
+  gradientStart: '#E67E00',
+  gradientEnd: '#CC5500',
+};
+
+// Eski dosyaların kırılmaması için Colors = LightColors bırakalım. (Sonra düzelteceğiz)
+export const Colors = LightColors;
+export type ColorKey = keyof typeof LightColors;
+export type AppThemeColors = typeof LightColors;
 
 // Tipografi ölçeği
 export const Typography = {

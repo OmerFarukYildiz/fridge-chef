@@ -49,6 +49,17 @@ export default function TabsLayout() {
         }}
       />
 
+      {/* Akış (Feed) */}
+      <Tabs.Screen
+        name="feed"
+        options={{
+          title: 'Akış',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'planet' : 'planet-outline'} focused={focused} />
+          ),
+        }}
+      />
+
       {/* Sanal Kiler */}
       <Tabs.Screen
         name="pantry"
@@ -92,6 +103,17 @@ export default function TabsLayout() {
           title: 'Geçmiş',
           tabBarIcon: ({ focused }) => (
             <TabIcon name={focused ? 'time' : 'time-outline'} focused={focused} />
+          ),
+        }}
+      />
+
+      {/* AI Asistan */}
+      <Tabs.Screen
+        name="assistant"
+        options={{
+          title: 'Asistan',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name={focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline'} focused={focused} />
           ),
         }}
       />
