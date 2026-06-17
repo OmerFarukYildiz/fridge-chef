@@ -139,29 +139,56 @@ export default function IndexScreen() {
   };
 
   const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 1,
-    });
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('İzin Gerekli', 'Galeriden fotoğraf seçmek için medya kütüphanesi izni gerekiyor.');
+        return;
+      }
 
-    if (!result.canceled && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      await processAndNavigate(uri);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        const asset = result.assets[0];
+        console.log('[Gallery] selected image:', {
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          fileSize: asset.fileSize,
+          mimeType: asset.mimeType,
+        });
+        await processAndNavigate(asset.uri);
+      }
+    } catch (error: any) {
+      console.error('[Gallery] image pick/process error:', error);
+      Alert.alert('Hata', `Galeri fotoğrafı işlenemedi: ${error?.message || String(error)}`);
     }
   };
 
   // ── Ortak: Sıkıştır + Yönlendir ──────────────────────────────────────────
   const processAndNavigate = async (uri: string) => {
+    console.log('[Gallery] processing image:', { uri });
     const manipulated = await ImageManipulator.manipulateAsync(
       uri,
       [{ resize: { width: 800 } }],
       { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
     );
-    if (manipulated.base64) {
-      // Galeriden seçince de recipe-picker'a git (10 seçenek)
-      router.push({ pathname: '/recipe-picker', params: { base64Image: manipulated.base64 } } as any);
+    console.log('[Gallery] processed image:', {
+      width: manipulated.width,
+      height: manipulated.height,
+      base64Length: manipulated.base64?.length ?? 0,
+    });
+
+    if (!manipulated.base64) {
+      throw new Error('Görsel base64 formatına çevrilemedi.');
     }
+
+    // Galeriden seçince de recipe-picker'a git (10 seçenek)
+    router.push({ pathname: '/recipe-picker', params: { base64Image: manipulated.base64 } } as any);
   };
 
   const firstName = userProfile?.displayName?.split(' ')[0] ?? user?.displayName?.split(' ')[0] ?? 'Şef';
@@ -182,197 +209,197 @@ export default function IndexScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>Merhaba, {firstName}! 👋</Text>
-            <Text style={styles.headerSubtitle}>Bugün ne pişirelim?</Text>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>Merhaba, {firstName}! 👋</Text>
+              <Text style={styles.headerSubtitle}>Bugün ne pişirelim?</Text>
+            </View>
+            <TouchableOpacity onPress={() => router.push('/profile' as any)} activeOpacity={0.8}>
+              {userProfile?.photoBase64 ? (
+                <Image source={{ uri: userProfile.photoBase64 }} style={[styles.avatarCircle, { borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' }]} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarText}>
+                    {firstName.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => router.push('/profile' as any)} activeOpacity={0.8}>
-            {userProfile?.photoBase64 ? (
-              <Image source={{ uri: userProfile.photoBase64 }} style={[styles.avatarCircle, { borderWidth: 2, borderColor: 'rgba(255,255,255,0.5)' }]} />
-            ) : (
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarText}>
-                  {firstName.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+
+          {/* İstatistik Rozetleri */}
+          <View style={styles.statsRow}>
+            <View style={styles.statBadge}>
+              <Ionicons name="heart" size={14} color={colors.primary} />
+              <Text style={styles.statText}>{favoriteCount} Favori</Text>
+            </View>
+            <View style={styles.statBadge}>
+              <Ionicons name="cart" size={14} color={colors.primary} />
+              <Text style={styles.statText}>{shoppingCount} Alışveriş</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* ── Ana CTA Alanı ───────────────────────────────────── */}
+        <View style={styles.ctaSection}>
+          <Text style={styles.ctaTitle}>Dolabında ne var?</Text>
+          <Text style={styles.ctaSubtitle}>
+            Fotoğraf çek veya galeriden seç, AI şef tarifinizi hazırlasın
+          </Text>
+
+          {/* Büyük "Fotoğraf Çek" Butonu */}
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <TouchableOpacity
+              style={styles.mainCta}
+              onPress={() => router.push('/camera' as any)}
+              activeOpacity={0.9}
+            >
+              <LinearGradient
+                colors={[colors.gradientStart, colors.gradientEnd]}
+                style={styles.mainCtaGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.mainCtaIconContainer}>
+                  <Ionicons name="camera" size={52} color="white" />
+                </View>
+                <Text style={styles.mainCtaText}>Dolabını Tara</Text>
+                <Text style={styles.mainCtaSubText}>Fotoğraf çek</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          {/* "veya" Ayırıcı */}
+          <View style={styles.orRow}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>veya</Text>
+            <View style={styles.orLine} />
+          </View>
+
+          {/* Galeriden Seç */}
+          <TouchableOpacity
+            style={styles.galleryButton}
+            onPress={pickFromGallery}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="images-outline" size={22} color={colors.primary} />
+            <Text style={styles.galleryButtonText}>Galeriden Fotoğraf Seç</Text>
           </TouchableOpacity>
         </View>
 
-        {/* İstatistik Rozetleri */}
-        <View style={styles.statsRow}>
-          <View style={styles.statBadge}>
-            <Ionicons name="heart" size={14} color={colors.primary} />
-            <Text style={styles.statText}>{favoriteCount} Favori</Text>
-          </View>
-          <View style={styles.statBadge}>
-            <Ionicons name="cart" size={14} color={colors.primary} />
-            <Text style={styles.statText}>{shoppingCount} Alışveriş</Text>
-          </View>
-        </View>
-      </LinearGradient>
-
-      {/* ── Ana CTA Alanı ───────────────────────────────────── */}
-      <View style={styles.ctaSection}>
-        <Text style={styles.ctaTitle}>Dolabında ne var?</Text>
-        <Text style={styles.ctaSubtitle}>
-          Fotoğraf çek veya galeriden seç, AI şef tarifinizi hazırlasın
-        </Text>
-
-        {/* Büyük "Fotoğraf Çek" Butonu */}
-        <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+        {/* ── Kısa Yollar ─────────────────────────────────────── */}
+        <View style={styles.shortcutsRow}>
           <TouchableOpacity
-            style={styles.mainCta}
-            onPress={() => router.push('/camera' as any)}
-            activeOpacity={0.9}
+            onPress={() => router.push('/(tabs)/favorites' as any)}
+            style={styles.shortcutCard}
           >
             <LinearGradient
-              colors={[colors.gradientStart, colors.gradientEnd]}
-              style={styles.mainCtaGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+              colors={isDark ? ['#331111', '#441111'] : ['#FFF0F0', '#FFE0E0']}
+              style={styles.shortcutGradient}
             >
-              <View style={styles.mainCtaIconContainer}>
-                <Ionicons name="camera" size={52} color="white" />
-              </View>
-              <Text style={styles.mainCtaText}>Dolabını Tara</Text>
-              <Text style={styles.mainCtaSubText}>Fotoğraf çek</Text>
+              <Ionicons name="heart" size={28} color={colors.error} />
+              <Text style={styles.shortcutLabel}>Favoriler</Text>
+              <Text style={styles.shortcutCount}>{favoriteCount} tarif</Text>
             </LinearGradient>
           </TouchableOpacity>
-        </Animated.View>
 
-        {/* "veya" Ayırıcı */}
-        <View style={styles.orRow}>
-          <View style={styles.orLine} />
-          <Text style={styles.orText}>veya</Text>
-          <View style={styles.orLine} />
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/shopping' as any)}
+            style={styles.shortcutCard}
+          >
+            <LinearGradient
+              colors={isDark ? ['#113311', '#114411'] : ['#F0FFF4', '#DCFCE7']}
+              style={styles.shortcutGradient}
+            >
+              <Ionicons name="cart" size={28} color={colors.secondary} />
+              <Text style={styles.shortcutLabel}>Alışveriş</Text>
+              <Text style={styles.shortcutCount}>{shoppingCount} ürün</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
 
-        {/* Galeriden Seç */}
+        {/* ── Eğlence & Hızlı Modlar (Faz 4) ──────────────────── */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={[styles.actionCard, snackLoading && styles.actionCardDisabled]}
+            onPress={handleQuickSnack}
+            disabled={snackLoading}
+          >
+            <Text style={styles.actionIcon}>⚡</Text>
+            <Text style={styles.actionTitle}>{snackLoading ? 'Yükleniyor...' : 'Hızlı Atıştırmalık'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => router.push('/guest' as any)}
+          >
+            <Text style={styles.actionIcon}>🏠</Text>
+            <Text style={styles.actionTitle}>Misafir Modu</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Mevsimsel Öneriler ──────────────────────────────── */}
         <TouchableOpacity
-          style={styles.galleryButton}
-          onPress={pickFromGallery}
+          style={styles.seasonCard}
           activeOpacity={0.85}
-        >
-          <Ionicons name="images-outline" size={22} color={colors.primary} />
-          <Text style={styles.galleryButtonText}>Galeriden Fotoğraf Seç</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Kısa Yollar ─────────────────────────────────────── */}
-      <View style={styles.shortcutsRow}>
-        <TouchableOpacity
-          onPress={() => router.push('/(tabs)/favorites' as any)}
-          style={styles.shortcutCard}
+          onPress={() => router.push('/(tabs)/assistant' as any)}
         >
           <LinearGradient
-            colors={isDark ? ['#331111', '#441111'] : ['#FFF0F0', '#FFE0E0']}
-            style={styles.shortcutGradient}
+            colors={season.colors}
+            style={styles.seasonGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
           >
-            <Ionicons name="heart" size={28} color={colors.error} />
-            <Text style={styles.shortcutLabel}>Favoriler</Text>
-            <Text style={styles.shortcutCount}>{favoriteCount} tarif</Text>
+            <Text style={styles.seasonEmoji}>{season.emoji}</Text>
+            <View style={styles.seasonTextCol}>
+              <Text style={styles.seasonTitle}>{season.label}</Text>
+              <Text style={styles.seasonSub}>AI asistana sor →</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.8)" />
           </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => router.push('/(tabs)/shopping' as any)}
-          style={styles.shortcutCard}
-        >
-          <LinearGradient
-            colors={isDark ? ['#113311', '#114411'] : ['#F0FFF4', '#DCFCE7']}
-            style={styles.shortcutGradient}
-          >
-            <Ionicons name="cart" size={28} color={colors.secondary} />
-            <Text style={styles.shortcutLabel}>Alışveriş</Text>
-            <Text style={styles.shortcutCount}>{shoppingCount} ürün</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Eğlence & Hızlı Modlar (Faz 4) ──────────────────── */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={[styles.actionCard, snackLoading && styles.actionCardDisabled]}
-          onPress={handleQuickSnack}
-          disabled={snackLoading}
-        >
-          <Text style={styles.actionIcon}>⚡</Text>
-          <Text style={styles.actionTitle}>{snackLoading ? 'Yükleniyor...' : 'Hızlı Atıştırmalık'}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => router.push('/guest' as any)}
-        >
-          <Text style={styles.actionIcon}>🏠</Text>
-          <Text style={styles.actionTitle}>Misafir Modu</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Mevsimsel Öneriler ──────────────────────────────── */}
-      <TouchableOpacity
-        style={styles.seasonCard}
-        activeOpacity={0.85}
-        onPress={() => router.push('/(tabs)/assistant' as any)}
-      >
-        <LinearGradient
-          colors={season.colors}
-          style={styles.seasonGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Text style={styles.seasonEmoji}>{season.emoji}</Text>
-          <View style={styles.seasonTextCol}>
-            <Text style={styles.seasonTitle}>{season.label}</Text>
-            <Text style={styles.seasonSub}>AI asistana sor →</Text>
+        {/* ── Günlük Kalori Takibi ────────────────────────────── */}
+        <View style={styles.calorieCard}>
+          <View style={styles.calorieHeader}>
+            <View>
+              <Text style={styles.calorieTitle}>🔥 Bugünkü Kalori</Text>
+              <Text style={styles.calorieValue}>{todayCalories} / {calorieGoal} kcal</Text>
+            </View>
+            <Text style={styles.caloriePercent}>
+              {Math.min(Math.round((todayCalories / calorieGoal) * 100), 100)}%
+            </Text>
           </View>
-          <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.8)" />
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* ── Günlük Kalori Takibi ────────────────────────────── */}
-      <View style={styles.calorieCard}>
-        <View style={styles.calorieHeader}>
-          <View>
-            <Text style={styles.calorieTitle}>🔥 Bugünkü Kalori</Text>
-            <Text style={styles.calorieValue}>{todayCalories} / {calorieGoal} kcal</Text>
+          <View style={styles.calorieBar}>
+            <View
+              style={[
+                styles.calorieBarFill,
+                {
+                  width: `${Math.min((todayCalories / calorieGoal) * 100, 100)}%`,
+                  backgroundColor: todayCalories > calorieGoal ? colors.error : colors.primary,
+                },
+              ]}
+            />
           </View>
-          <Text style={styles.caloriePercent}>
-            {Math.min(Math.round((todayCalories / calorieGoal) * 100), 100)}%
-          </Text>
+          {todayCalories === 0 && (
+            <Text style={styles.calorieHint}>
+              Tarif sayfasında &quot;Bugün Yedim&quot; butonuna basarak kalori ekleyebilirsin
+            </Text>
+          )}
         </View>
-        <View style={styles.calorieBar}>
-          <View
-            style={[
-              styles.calorieBarFill,
-              {
-                width: `${Math.min((todayCalories / calorieGoal) * 100, 100)}%`,
-                backgroundColor: todayCalories > calorieGoal ? colors.error : colors.primary,
-              },
-            ]}
-          />
-        </View>
-        {todayCalories === 0 && (
-          <Text style={styles.calorieHint}>
-            Tarif sayfasında "Bugün Yedim" butonuna basarak kalori ekleyebilirsin
-          </Text>
-        )}
-      </View>
 
-      {/* ── İpuçları ───────────────────────────────────────────── */}
-      <View style={styles.tipsSection}>
-        <Text style={styles.tipsSectionTitle}>💡 İpuçları</Text>
-        {TIPS.map((tip, index) => (
-          <View key={index} style={styles.tipRow}>
-            <Text style={styles.tipIcon}>{tip.icon}</Text>
-            <Text style={styles.tipText}>{tip.text}</Text>
-          </View>
-        ))}
-      </View>
-      {/* Alt Boşluk */}
-      <View style={{ height: 100 }} />
+        {/* ── İpuçları ───────────────────────────────────────────── */}
+        <View style={styles.tipsSection}>
+          <Text style={styles.tipsSectionTitle}>💡 İpuçları</Text>
+          {TIPS.map((tip, index) => (
+            <View key={index} style={styles.tipRow}>
+              <Text style={styles.tipIcon}>{tip.icon}</Text>
+              <Text style={styles.tipText}>{tip.text}</Text>
+            </View>
+          ))}
+        </View>
+        {/* Alt Boşluk */}
+        <View style={{ height: 100 }} />
       </ScrollView>
     </ScreenBackground>
   );

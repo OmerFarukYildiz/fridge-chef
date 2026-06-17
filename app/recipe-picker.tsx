@@ -28,7 +28,7 @@ import { getHistory } from '../services/firestoreService';
 const DIFFICULTY_COLORS: Record<string, { bg: string; text: string }> = {
   Kolay: { bg: '#D1FAE5', text: '#065F46' },
   Orta: { bg: '#FEF3C7', text: '#92400E' },
-  Zor:  { bg: '#FEE2E2', text: '#991B1B' },
+  Zor: { bg: '#FEE2E2', text: '#991B1B' },
 };
 
 // ── Kategori Emojileri ───────────────────────────────────────
@@ -39,6 +39,16 @@ const CATEGORY_EMOJI: Record<string, string> = {
 };
 
 // ── Tekli Tarif Kartı ─────────────────────────────────────────
+const getErrorMessage = (err: unknown): string => {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+};
+
 interface OptionCardProps {
   item: RecipeOption;
   index: number;
@@ -107,15 +117,15 @@ export default function RecipePickerScreen() {
   const [loadingOptions, setLoadingOptions] = useState(!optionsJson);
   const [selectedOption, setSelectedOption] = useState<RecipeOption | null>(null);
   const [generatingRecipe, setGeneratingRecipe] = useState(false);
-  const [error, setError] = useState<{ message: string; isNonFood: boolean } | null>(null);
-  const [excludeList, setExcludeList] = useState<string[]>([]);
+  const [error, setError] = useState<{ message: string; detail?: string; isNonFood: boolean } | null>(null);
+  const [excludeList, setExcludeList] = useState<string[] | null>(null);
 
   useEffect(() => {
     loadExcludeList();
   }, []);
 
   useEffect(() => {
-    if (excludeList !== undefined && !optionsJson) {
+    if (excludeList !== null && !optionsJson) {
       fetchOptions();
     }
   }, [excludeList, optionsJson]);
@@ -136,6 +146,7 @@ export default function RecipePickerScreen() {
 
   const fetchOptions = async (retrying = false) => {
     if (!base64Image) {
+      console.error('[RecipePicker] missing base64Image route param');
       setError({ message: 'Görsel bulunamadı.', isNonFood: false });
       setLoadingOptions(false);
       return;
@@ -143,13 +154,26 @@ export default function RecipePickerScreen() {
     if (!retrying) setLoadingOptions(true);
     setError(null);
     try {
+      console.log('[RecipePicker] fetching recipe options:', {
+        retrying,
+        base64Length: base64Image.length,
+        excludeCount: excludeList?.length ?? 0,
+      });
       const result = await getRecipeOptionsFromImage(
         base64Image,
         userProfile ?? undefined,
-        excludeList
+        excludeList ?? []
       );
+      console.log('[RecipePicker] fetched recipe options:', { count: result.length });
       setOptions(result);
     } catch (err) {
+      const detail = getErrorMessage(err);
+      console.error('[RecipePicker] fetchOptions error:', {
+        message: detail,
+        base64Length: base64Image.length,
+        excludeCount: excludeList?.length ?? 0,
+        error: err,
+      });
       if (err instanceof NonFoodImageError) {
         setError({
           message: 'Lütfen sadece gıda malzemesi, buzdolabı veya yemek fotoğrafı yükleyin.',
@@ -158,6 +182,7 @@ export default function RecipePickerScreen() {
       } else {
         setError({
           message: 'Tarif seçenekleri yüklenemedi. Lütfen tekrar deneyin.',
+          detail,
           isNonFood: false,
         });
       }
@@ -171,6 +196,11 @@ export default function RecipePickerScreen() {
     setSelectedOption(option);
     setGeneratingRecipe(true);
     try {
+      console.log('[RecipePicker] generating recipe detail:', {
+        recipeName: option.tarifAdi,
+        base64Length: base64Image?.length ?? 0,
+        hasIdentifiedItems: Boolean(identifiedItems),
+      });
       const recipe = await getFullRecipeBySelection(
         option,
         base64Image,
@@ -186,8 +216,14 @@ export default function RecipePickerScreen() {
         },
       });
     } catch (err: any) {
-      console.error('[RecipePicker] handleSelect error:', err);
-      Alert.alert('Hata', `Tarif oluşturulamadı: ${err?.message || err}`);
+      const detail = getErrorMessage(err);
+      console.error('[RecipePicker] handleSelect error:', {
+        message: detail,
+        recipeName: option.tarifAdi,
+        base64Length: base64Image?.length ?? 0,
+        error: err,
+      });
+      Alert.alert('Hata', `Tarif oluşturulamadı: ${detail}`);
       setSelectedOption(null);
     } finally {
       setGeneratingRecipe(false);
@@ -226,6 +262,9 @@ export default function RecipePickerScreen() {
           {error.isNonFood ? 'Gıda Görseli Gerekli' : 'Bir Sorun Oluştu'}
         </Text>
         <Text style={styles.errorMsg}>{error.message}</Text>
+        {error.detail ? (
+          <Text style={styles.errorDetail} selectable>{error.detail}</Text>
+        ) : null}
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={18} color="white" />
           <Text style={styles.backBtnText}>Geri Dön</Text>
@@ -239,7 +278,7 @@ export default function RecipePickerScreen() {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingTitle}>"{selectedOption.tarifAdi}" hazırlanıyor 👨‍🍳</Text>
+        <Text style={styles.loadingTitle}>&quot;{selectedOption.tarifAdi}&quot; hazırlanıyor 👨‍🍳</Text>
         <Text style={styles.loadingSubtitle}>Detaylı tarif oluşturuluyor...</Text>
       </View>
     );
@@ -368,6 +407,16 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   errorIconWarn: { backgroundColor: '#FEF3C7' },
   errorTitle: { fontSize: Typography.xl, fontWeight: '700', color: colors.textPrimary },
   errorMsg: { fontSize: Typography.base, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, maxWidth: 280 },
+  errorDetail: {
+    fontSize: Typography.xs,
+    color: colors.error,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 320,
+    backgroundColor: colors.errorLight,
+    borderRadius: Radius.md,
+    padding: 10,
+  },
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 24,
