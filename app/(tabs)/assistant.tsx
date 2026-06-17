@@ -39,13 +39,13 @@ const getAiClient = () => {
 
 const getAssistantInstruction = (lang?: string) => {
   const langName = lang === 'en' ? 'İngilizce' : lang === 'de' ? 'Almanca' : 'Türkçe';
-  
+
   const guardrailReplies: Record<string, string> = {
     en: "Sorry, I can only help with food and nutrition topics 🍽️ Do you have any other recipe or nutrition questions?",
     de: "Es tut mir leid, ich kann nur bei Themen rund um Ernährung und Essen helfen 🍽️ Haben Sie andere Fragen zu Rezepten oder Ernährung?",
     tr: "Üzgünüm, ben sadece yiyecek ve beslenme konularında yardımcı olabiliyorum 🍽️ Başka bir tarif veya beslenme sorun var mı?"
   };
-  
+
   const guardrailReply = guardrailReplies[lang || 'tr'] || guardrailReplies.tr;
 
   return `Sen "Fridge Chef" uygulamasının AI beslenme asistanısın. Adın "Şef".
@@ -162,7 +162,7 @@ export default function AssistantScreen() {
       }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: process.env.EXPO_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
         contents: [
           ...history,
           { role: 'user', parts: [{ text: trimmed }] },
@@ -209,8 +209,8 @@ export default function AssistantScreen() {
       'Tüm mesaj geçmişini silmek istediğinize emin misiniz?',
       [
         { text: 'İptal', style: 'cancel' },
-        { 
-          text: 'Temizle', 
+        {
+          text: 'Temizle',
           style: 'destructive',
           onPress: () => {
             setMessages([{
@@ -234,89 +234,89 @@ export default function AssistantScreen() {
 
   return (
     <ScreenBackground>
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <LinearGradient
-        colors={[colors.primary, colors.primaryDark]}
-        style={styles.header}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+      <KeyboardAvoidingView
+        style={styles.root}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.headerTitle}>👨‍🍳 AI Beslenme Asistanı</Text>
-            <Text style={styles.headerSub}>Yiyecek ve beslenme hakkında her şeyi sor</Text>
-          </View>
-          {messages.length > 1 && (
-            <TouchableOpacity onPress={handleClearChat} style={styles.clearBtn}>
-              <Ionicons name="trash-outline" size={22} color="white" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </LinearGradient>
-
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => (
-          <MessageBubble msg={item} onMakeRecipe={handleMakeRecipe} colors={colors} />
-        )}
-        contentContainerStyle={styles.messageList}
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={loading ? (
-          <View style={styles.typingRow}>
-            <View style={styles.aiAvatar}>
-              <Text style={styles.aiAvatarText}>👨‍🍳</Text>
-            </View>
-            <View style={styles.typingBubble}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.typingText}>Şef düşünüyor...</Text>
-            </View>
-          </View>
-        ) : null}
-      />
-
-      {/* Hızlı Sorular (sadece ilk mesajda görünür) */}
-      {messages.length <= 1 && (
-        <View style={styles.quickRow}>
-          {QUICK_QUESTIONS.map((q) => (
-            <TouchableOpacity
-              key={q}
-              style={styles.quickChip}
-              onPress={() => { setInput(q); }}
-            >
-              <Text style={styles.quickChipText}>{q}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
-      {/* Girdi Alanı */}
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Bir şey sor... (ör: kalori düşük tarif öner)"
-          placeholderTextColor={colors.textMuted}
-          value={input}
-          onChangeText={setInput}
-          multiline
-          maxLength={300}
-          onSubmitEditing={sendMessage}
-          returnKeyType="send"
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
-          onPress={sendMessage}
-          disabled={!input.trim() || loading}
+        <LinearGradient
+          colors={[colors.primary, colors.primaryDark]}
+          style={styles.header}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
         >
-          <Ionicons name="send" size={20} color="white" />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.headerTitle}>👨‍🍳 AI Beslenme Asistanı</Text>
+              <Text style={styles.headerSub}>Yiyecek ve beslenme hakkında her şeyi sor</Text>
+            </View>
+            {messages.length > 1 && (
+              <TouchableOpacity onPress={handleClearChat} style={styles.clearBtn}>
+                <Ionicons name="trash-outline" size={22} color="white" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </LinearGradient>
+
+        <FlatList
+          ref={listRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          renderItem={({ item }) => (
+            <MessageBubble msg={item} onMakeRecipe={handleMakeRecipe} colors={colors} />
+          )}
+          contentContainerStyle={styles.messageList}
+          showsVerticalScrollIndicator={false}
+          ListFooterComponent={loading ? (
+            <View style={styles.typingRow}>
+              <View style={styles.aiAvatar}>
+                <Text style={styles.aiAvatarText}>👨‍🍳</Text>
+              </View>
+              <View style={styles.typingBubble}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.typingText}>Şef düşünüyor...</Text>
+              </View>
+            </View>
+          ) : null}
+        />
+
+        {/* Hızlı Sorular (sadece ilk mesajda görünür) */}
+        {messages.length <= 1 && (
+          <View style={styles.quickRow}>
+            {QUICK_QUESTIONS.map((q) => (
+              <TouchableOpacity
+                key={q}
+                style={styles.quickChip}
+                onPress={() => { setInput(q); }}
+              >
+                <Text style={styles.quickChipText}>{q}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Girdi Alanı */}
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Bir şey sor... (ör: kalori düşük tarif öner)"
+            placeholderTextColor={colors.textMuted}
+            value={input}
+            onChangeText={setInput}
+            multiline
+            maxLength={300}
+            onSubmitEditing={sendMessage}
+            returnKeyType="send"
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
+            onPress={sendMessage}
+            disabled={!input.trim() || loading}
+          >
+            <Ionicons name="send" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </ScreenBackground>
   );
 }

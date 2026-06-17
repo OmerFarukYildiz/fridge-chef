@@ -200,7 +200,7 @@ export default function RegisterScreen() {
                   <Ionicons name="person-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
                   <TextInput
                     style={styles.input}
-                    placeholder="Ömer Yıldız"
+                    placeholder="ad soyad"
                     placeholderTextColor={Colors.textMuted}
                     value={displayName}
                     onChangeText={setDisplayName}

@@ -10,9 +10,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  updatePassword,
   AuthError,
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './firebaseConfig';
 import { UserPreferences } from '../types';
 
@@ -35,6 +36,8 @@ const getFirebaseErrorMessage = (error: AuthError): string => {
       return 'Çok fazla hatalı deneme. Lütfen bir süre bekleyin.';
     case 'auth/network-request-failed':
       return 'İnternet bağlantısı yok. Lütfen bağlantınızı kontrol edin.';
+    case 'auth/requires-recent-login':
+      return 'Bu işlem hassas bir güvenlik işlemi olduğundan son zamanlarda giriş yapmış olmanız gerekir. Lütfen çıkış yapıp tekrar giriş yaptıktan sonra şifrenizi değiştirmeyi deneyin.';
     default:
       return 'Bir hata oluştu. Lütfen tekrar deneyin.';
   }
@@ -100,5 +103,38 @@ export const logoutUser = async (): Promise<void> => {
     await signOut(auth);
   } catch (error) {
     throw new Error('Çıkış yapılırken bir hata oluştu.');
+  }
+};
+
+// ── Şifre Değiştir ───────────────────────────────────────────
+/**
+ * Mevcut kullanıcının şifresini değiştirir.
+ */
+export const changeUserPassword = async (newPassword: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Oturum açık değil.');
+  try {
+    await updatePassword(user, newPassword);
+  } catch (error) {
+    const authError = error as AuthError;
+    throw new Error(getFirebaseErrorMessage(authError));
+  }
+};
+
+// ── Ad Soyad Değiştir ────────────────────────────────────────
+/**
+ * Mevcut kullanıcının ad soyad bilgisini günceller (hem Auth hem Firestore).
+ */
+export const changeUserDisplayName = async (newDisplayName: string): Promise<void> => {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Oturum açık değil.');
+  try {
+    await updateProfile(user, { displayName: newDisplayName });
+    await updateDoc(doc(db, 'users', user.uid), {
+      displayName: newDisplayName,
+    });
+  } catch (error) {
+    const authError = error as AuthError;
+    throw new Error(getFirebaseErrorMessage(authError));
   }
 };

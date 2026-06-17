@@ -300,7 +300,8 @@ export default function RecipeScreen() {
     if (!user || !recipe || savedToPantry) return;
     setSavingPantry(true);
     try {
-      const added = await addItemsToPantry(user.uid, recipe.kullanilanMalzemeler);
+      const targetId = userProfile?.familyId || user.uid;
+      const added = await addItemsToPantry(targetId, recipe.kullanilanMalzemeler);
       setSavedToPantry(true);
       Alert.alert(
         '📦 Kilere Kaydedildi',
@@ -327,7 +328,8 @@ export default function RecipeScreen() {
     if (!user || !recipe || !recipe.eksikMalzemeler?.length) return;
     setSavingShoppingList(true);
     try {
-      await addItemsToShoppingList(user.uid, recipe.eksikMalzemeler);
+      const targetId = userProfile?.familyId || user.uid;
+      await addItemsToShoppingList(targetId, recipe.eksikMalzemeler);
       Alert.alert(
         '🛒 Alışveriş Listesine Eklendi',
         `${recipe.eksikMalzemeler.length} malzeme listenize eklendi.`,
@@ -354,7 +356,8 @@ export default function RecipeScreen() {
     if (!user) return;
     setSubstituteLoading(ingredient);
     try {
-      const pantry = await getPantryItems(user.uid);
+      const targetId = userProfile?.familyId || user.uid;
+      const pantry = await getPantryItems(targetId);
       const pantryNames = pantry.map((i) => i.name);
       const suggestions = await getIngredientSubstitution(ingredient, pantryNames, userProfile ?? undefined);
       
@@ -857,7 +860,7 @@ const getStyles = (colors: AppThemeColors, isDark: boolean) => StyleSheet.create
   portionNote: { fontSize: Typography.xs, color: colors.textMuted, fontStyle: 'italic' },
   section: { marginBottom: Spacing.xl },
   missingSection: {
-    backgroundColor: '#FEF9EC', padding: Spacing.base,
+    backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF9EC', padding: Spacing.base,
     borderRadius: Radius.lg, borderLeftWidth: 4, borderLeftColor: colors.warning,
   },
   sectionTitle: { fontSize: Typography.lg, fontWeight: '700', color: colors.textPrimary, marginBottom: Spacing.md },

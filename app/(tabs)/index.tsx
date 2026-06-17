@@ -120,7 +120,8 @@ export default function IndexScreen() {
     if (!user) return;
     setSnackLoading(true);
     try {
-      const pantry = await getPantryItems(user.uid);
+      const targetId = userProfile?.familyId || user.uid;
+      const pantry = await getPantryItems(targetId);
       const items = pantry.map(i => i.name);
       const options = await getQuickSnackRecipes(items, userProfile ?? undefined);
       router.push({
@@ -139,7 +140,7 @@ export default function IndexScreen() {
 
   const pickFromGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       quality: 1,
     });

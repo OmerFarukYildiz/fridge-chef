@@ -341,12 +341,14 @@ export default function PantryScreen() {
   const handleDeleteLeftover = (item: LeftoverItem) => {
     Alert.alert('Sil', `"${item.name}" silinsin mi?`, [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: async () => {
-        if (!user) return;
-        const targetId = userProfile?.familyId || user.uid;
-        await deleteLeftover(targetId, item.id);
-        setLeftovers((prev) => prev.filter((i) => i.id !== item.id));
-      }},
+      {
+        text: 'Sil', style: 'destructive', onPress: async () => {
+          if (!user) return;
+          const targetId = userProfile?.familyId || user.uid;
+          await deleteLeftover(targetId, item.id);
+          setLeftovers((prev) => prev.filter((i) => i.id !== item.id));
+        }
+      },
     ]);
   };
 
@@ -402,7 +404,7 @@ export default function PantryScreen() {
         if (!apiKey) throw new Error('API Key yok');
         const ai = new GoogleGenAI({ apiKey });
         const res = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: process.env.EXPO_PUBLIC_GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash',
           contents: [{ role: 'user', parts: [{ text: BARCODE_LOOKUP_PROMPT(data) }] }],
           config: { temperature: 0.1 },
         });
@@ -418,7 +420,8 @@ export default function PantryScreen() {
           {
             text: 'Evet, Ekle',
             onPress: async () => {
-              await addItemsToPantry(user.uid, [productName]);
+              const targetId = userProfile?.familyId || user.uid;
+              await addItemsToPantry(targetId, [productName]);
               await loadItems();
               setBarcodeScanning(false);
             },
@@ -434,6 +437,13 @@ export default function PantryScreen() {
 
   const handleReceiptScan = async () => {
     try {
+      // Kamera iznini iste
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('İzin Gerekli', 'Fiş taramak için kamera iznine ihtiyacımız var.');
+        return;
+      }
+
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         quality: 1,
@@ -446,9 +456,9 @@ export default function PantryScreen() {
           { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
         );
         if (!manipResult.base64) throw new Error('Resim işlenemedi');
-        
+
         const extractedItems = await extractFoodItemsFromReceipt(manipResult.base64);
-        
+
         if (extractedItems.length === 0) {
           Alert.alert('Uyarı', 'Fişten gıda ürünü çıkarılamadı veya fiş okunamadı.');
         } else {
@@ -457,17 +467,21 @@ export default function PantryScreen() {
             `Şu ürünler bulundu:\n${extractedItems.join(', ')}\n\nKilere eklensin mi?`,
             [
               { text: 'İptal', style: 'cancel' },
-              { text: 'Ekle', onPress: async () => {
-                if (!user) return;
-                await addItemsToPantry(user.uid, extractedItems);
-                await loadItems();
-              }}
+              {
+                text: 'Ekle', onPress: async () => {
+                  if (!user) return;
+                  const targetId = userProfile?.familyId || user.uid;
+                  await addItemsToPantry(targetId, extractedItems);
+                  await loadItems();
+                }
+              }
             ]
           );
         }
       }
-    } catch (err) {
-      Alert.alert('Hata', 'Fiş tarama başarısız oldu.');
+    } catch (err: any) {
+      console.error('[ReceiptScan] error:', err);
+      Alert.alert('Hata', `Fiş tarama başarısız oldu: ${err?.message || err}`);
     } finally {
       setReceiptScanning(false);
     }
@@ -478,8 +492,9 @@ export default function PantryScreen() {
     setZeroWasteLoading(true);
 
     try {
-      const expiring = await getExpiringSoonItems(user.uid, 3);
-      const all = await getPantryItems(user.uid);
+      const targetId = userProfile?.familyId || user.uid;
+      const expiring = await getExpiringSoonItems(targetId, 3);
+      const all = await getPantryItems(targetId);
       if (all.length === 0) {
         Alert.alert('Kiler Boş', 'Önce kilerinize malzeme eklemelisiniz.');
         return;

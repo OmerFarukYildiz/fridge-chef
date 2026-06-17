@@ -48,7 +48,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Tarif oluşturmak için galerinizdeki yemek fotoğraflarına erişmek istiyoruz."
+          "photosPermission": "Tarif oluşturmak için galerinizdeki yemek fotoğraflarına erişmek istiyoruz.",
+          "cameraPermission": "Fiş ve fatura çekmek için kameranıza erişmek istiyoruz."
         }
       ],
       "@react-native-community/datetimepicker",

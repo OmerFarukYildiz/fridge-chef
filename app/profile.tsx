@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { auth } from '../services/firebaseConfig';
 import { signOut } from 'firebase/auth';
+import { changeUserPassword, changeUserDisplayName } from '../services/authService';
 import {
   updateUserPhoto, updateUserAllergies, updateUserDietaryRestrictions, 
   createOrGetFamilyInvite, joinFamilyWithCode, leaveFamily,
@@ -83,6 +84,12 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Ad Soyad & Şifre Değiştirme
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [nameSaving, setNameSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+
   // Aile sistemi state'leri
   const [inviteCodeInput, setInviteCodeInput] = useState('');
   const [myInviteCode, setMyInviteCode] = useState<string | null>(null);
@@ -99,7 +106,42 @@ export default function ProfileScreen() {
     if (userProfile?.fitnessGoal) setFitnessGoalState(userProfile.fitnessGoal);
     if (userProfile?.childMode !== undefined) setChildModeState(userProfile.childMode);
     if (userProfile?.language) setLanguageState(userProfile.language);
+    if (userProfile?.displayName) setNewDisplayName(userProfile.displayName);
   }, [userProfile]);
+
+  const handleUpdateDisplayName = async () => {
+    if (!newDisplayName.trim()) {
+      Alert.alert('Hata', 'Ad soyad alanı boş bırakılamaz.');
+      return;
+    }
+    setNameSaving(true);
+    try {
+      await changeUserDisplayName(newDisplayName.trim());
+      await refreshProfile();
+      Alert.alert('Başarılı', 'Ad soyad bilginiz güncellendi.');
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Ad soyad güncellenirken bir hata oluştu.');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!newPassword.trim() || newPassword.length < 6) {
+      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır.');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await changeUserPassword(newPassword.trim());
+      setNewPassword('');
+      Alert.alert('Başarılı', 'Şifreniz başarıyla güncellendi.');
+    } catch (err: any) {
+      Alert.alert('Hata', err.message || 'Şifre güncellenirken bir hata oluştu.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
   const toggleDiet = (label: string) => {
     setSelectedDiets((prev) =>
@@ -533,6 +575,58 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Hesap Ayarları */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🔒 Hesap Ayarları</Text>
+        <Text style={styles.sectionSubtitle}>Ad soyad ve şifre bilgilerinizi güncelleyin.</Text>
+
+        {/* Ad Soyad Güncelleme */}
+        <View style={styles.settingInputRow}>
+          <TextInput
+            style={styles.settingInput}
+            placeholder="Ad Soyad"
+            placeholderTextColor={colors.textMuted}
+            value={newDisplayName}
+            onChangeText={setNewDisplayName}
+            autoCapitalize="words"
+          />
+          <TouchableOpacity
+            style={[styles.settingActionBtn, (!newDisplayName.trim() || nameSaving) && styles.settingActionBtnDisabled]}
+            onPress={handleUpdateDisplayName}
+            disabled={!newDisplayName.trim() || nameSaving}
+          >
+            {nameSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.settingActionBtnText}>Güncelle</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Şifre Güncelleme */}
+        <View style={styles.settingInputRow}>
+          <TextInput
+            style={styles.settingInput}
+            placeholder="Yeni Şifre (en az 6 karakter)"
+            placeholderTextColor={colors.textMuted}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            secureTextEntry
+          />
+          <TouchableOpacity
+            style={[styles.settingActionBtn, (newPassword.length < 6 || passwordSaving) && styles.settingActionBtnDisabled]}
+            onPress={handleUpdatePassword}
+            disabled={newPassword.length < 6 || passwordSaving}
+          >
+            {passwordSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.settingActionBtnText}>Değiştir</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Çıkış */}
       <View style={styles.section}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
@@ -745,4 +839,39 @@ const getStyles = (colors: AppThemeColors) => StyleSheet.create({
   badgeName: { fontSize: Typography.sm, fontWeight: '700', color: colors.textPrimary, textAlign: 'center' },
   badgeNameLocked: { color: colors.textMuted },
   badgeDate: { fontSize: 10, color: colors.textMuted, marginTop: 4 },
+
+  // ── Hesap Ayarları Stilleri ──
+  settingInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: Spacing.md,
+  },
+  settingInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: Radius.md,
+    padding: 10,
+    fontSize: Typography.base,
+    color: colors.textPrimary,
+    backgroundColor: colors.background,
+  },
+  settingActionBtn: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: Radius.md,
+    minWidth: 80,
+  },
+  settingActionBtnDisabled: {
+    opacity: 0.6,
+  },
+  settingActionBtnText: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: Typography.sm,
+  },
 });
